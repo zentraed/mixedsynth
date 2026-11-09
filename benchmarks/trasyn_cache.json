@@ -1,0 +1,302 @@
+{
+  "2.4314546363,2.7575545643,5.3947298352,5.00e-02": {
+    "T_t": 5,
+    "tr_dn2": 0.048819143835331064,
+    "sequence": "shyththythththsy"
+  },
+  "2.1908462769,0.5917337285,6.1300160252,5.00e-02": {
+    "T_t": 8,
+    "tr_dn2": 0.03374952169179533,
+    "sequence": "shthxthythththththty"
+  },
+  "2.3911908961,4.9389876934,0.8049616945,5.00e-02": {
+    "T_t": 8,
+    "tr_dn2": 0.039007633431920624,
+    "sequence": "shxthyththththythththz"
+  },
+  "1.4149291538,2.3297926978,5.8230361611,5.00e-02": {
+    "T_t": 9,
+    "tr_dn2": 0.02251063687063781,
+    "sequence": "hthxththxththxththxthtx"
+  },
+  "2.0227619311,5.1695636798,2.7860535791,5.00e-02": {
+    "T_t": 5,
+    "tr_dn2": 0.03407347858892191,
+    "sequence": "yththxthyththz"
+  },
+  "0.7138914990,3.4845589854,0.4009756459,5.00e-02": {
+    "T_t": 10,
+    "tr_dn2": 0.02889069204679156,
+    "sequence": "shththxththxththththxthyth"
+  },
+  "2.6000800098,3.9688644716,4.7632057501,5.00e-02": {
+    "T_t": 9,
+    "tr_dn2": 0.031139803715110093,
+    "sequence": "shyththththxthththththy"
+  },
+  "1.1137761770,6.0990755646,5.6116455070,5.00e-02": {
+    "T_t": 9,
+    "tr_dn2": 0.020939691870219882,
+    "sequence": "shththythththxththxthth"
+  },
+  "2.4453638761,1.2229510694,2.9324945532,5.00e-02": {
+    "T_t": 8,
+    "tr_dn2": 0.03057471116067322,
+    "sequence": "ythxthththxthththty"
+  },
+  "0.1376135888,0.9694294696,4.2917231471,5.00e-02": {
+    "T_t": 8,
+    "tr_dn2": 0.04964697882560462,
+    "sequence": "hythththxthththxththsx"
+  },
+  "2.4314546363,2.7575545643,5.3947298352,2.00e-02": {
+    "T_t": 10,
+    "tr_dn2": 0.0182692060752455,
+    "sequence": "hythththxththxththxthyththy"
+  },
+  "2.1908462769,0.5917337285,6.1300160252,2.00e-02": {
+    "T_t": 11,
+    "tr_dn2": 0.019685195750122148,
+    "sequence": "shththythththxthyththththxtx"
+  },
+  "2.3911908961,4.9389876934,0.8049616945,2.00e-02": {
+    "T_t": 10,
+    "tr_dn2": 0.011467948897834224,
+    "sequence": "shthyththththythththxthyt"
+  },
+  "1.4149291538,2.3297926978,5.8230361611,2.00e-02": {
+    "T_t": 10,
+    "tr_dn2": 0.012564930221352171,
+    "sequence": "hthxththththxththxthyththsz"
+  },
+  "2.0227619311,5.1695636798,2.7860535791,2.00e-02": {
+    "T_t": 10,
+    "tr_dn2": 0.01974513950997616,
+    "sequence": "ythxthythththyththythththsx"
+  },
+  "0.7138914990,3.4845589854,0.4009756459,2.00e-02": {
+    "T_t": 11,
+    "tr_dn2": 0.01199990110531684,
+    "sequence": "shxththxththyththththxththyth"
+  },
+  "2.6000800098,3.9688644716,4.7632057501,2.00e-02": {
+    "T_t": 10,
+    "tr_dn2": 0.018945589708144667,
+    "sequence": "shththththyththththyththy"
+  },
+  "1.1137761770,6.0990755646,5.6116455070,2.00e-02": {
+    "T_t": 10,
+    "tr_dn2": 0.016575943224553313,
+    "sequence": "ythththythththxthththth"
+  },
+  "2.4453638761,1.2229510694,2.9324945532,2.00e-02": {
+    "T_t": 10,
+    "tr_dn2": 0.013099615157654983,
+    "sequence": "hythxththxththxthththxthtz"
+  },
+  "0.1376135888,0.9694294696,4.2917231471,2.00e-02": {
+    "T_t": 10,
+    "tr_dn2": 0.013104520463306003,
+    "sequence": "thythththxthththxththyt"
+  },
+  "2.4314546363,2.7575545643,5.3947298352,1.00e-02": {
+    "T_t": 16,
+    "tr_dn2": 0.0066495008285512415,
+    "sequence": "shthththththththththxthththxthththt"
+  },
+  "2.1908462769,0.5917337285,6.1300160252,1.00e-02": {
+    "T_t": 14,
+    "tr_dn2": 0.005876361907075147,
+    "sequence": "ththxththththththythththxththxthsx"
+  },
+  "2.3911908961,4.9389876934,0.8049616945,1.00e-02": {
+    "T_t": 14,
+    "tr_dn2": 0.0069446455942285,
+    "sequence": "ythththxthththyththththxthththxty"
+  },
+  "1.4149291538,2.3297926978,5.8230361611,1.00e-02": {
+    "T_t": 17,
+    "tr_dn2": 0.007687142034901693,
+    "sequence": "shxththyththyththththxthththththxththxththsx"
+  },
+  "2.0227619311,5.1695636798,2.7860535791,1.00e-02": {
+    "T_t": 14,
+    "tr_dn2": 0.00973187802953208,
+    "sequence": "shththxthththxthythththxththththyths"
+  },
+  "0.7138914990,3.4845589854,0.4009756459,1.00e-02": {
+    "T_t": 14,
+    "tr_dn2": 0.009971223385672209,
+    "sequence": "hthythththxththxthythththxthyththtx"
+  },
+  "2.6000800098,3.9688644716,4.7632057501,1.00e-02": {
+    "T_t": 16,
+    "tr_dn2": 0.009947211329194584,
+    "sequence": "hthyththyththyththththythththxthththty"
+  },
+  "1.1137761770,6.0990755646,5.6116455070,1.00e-02": {
+    "T_t": 16,
+    "tr_dn2": 0.006740284397413374,
+    "sequence": "shyththththxthyththyththththxthththxthth"
+  },
+  "2.4453638761,1.2229510694,2.9324945532,1.00e-02": {
+    "T_t": 12,
+    "tr_dn2": 0.005980564544259295,
+    "sequence": "shxththxthyththththxththxthythths"
+  },
+  "0.1376135888,0.9694294696,4.2917231471,1.00e-02": {
+    "T_t": 14,
+    "tr_dn2": 0.00991785526248209,
+    "sequence": "ythythththythththxthththyththththz"
+  },
+  "2.4314546363,2.7575545643,5.3947298352,5.00e-03": {
+    "T_t": 17,
+    "tr_dn2": 0.0041984420356421855,
+    "sequence": "shthyththththxththththyththththythththty"
+  },
+  "2.1908462769,0.5917337285,6.1300160252,5.00e-03": {
+    "T_t": 17,
+    "tr_dn2": 0.004287363445518404,
+    "sequence": "shthththythththxththxthththyththththyththy"
+  },
+  "2.3911908961,4.9389876934,0.8049616945,5.00e-03": {
+    "T_t": 17,
+    "tr_dn2": 0.004330583861497566,
+    "sequence": "hythxthyththththxthththththththythththxth"
+  },
+  "1.4149291538,2.3297926978,5.8230361611,5.00e-03": {
+    "T_t": 20,
+    "tr_dn2": 0.0040839919367936664,
+    "sequence": "hthxththyththththyththyththyththythththxthyththtx"
+  },
+  "2.0227619311,5.1695636798,2.7860535791,5.00e-03": {
+    "T_t": 18,
+    "tr_dn2": 0.0049763342374899286,
+    "sequence": "hyththththththxththythththyththyththththxty"
+  },
+  "0.7138914990,3.4845589854,0.4009756459,5.00e-03": {
+    "T_t": 19,
+    "tr_dn2": 0.003086333759570633,
+    "sequence": "ththxththththythththxththythththththxthththz"
+  },
+  "2.6000800098,3.9688644716,4.7632057501,5.00e-03": {
+    "T_t": 21,
+    "tr_dn2": 0.004642569711240324,
+    "sequence": "ythxththxthththxththxththxthyththththxthththththxths"
+  },
+  "1.1137761770,6.0990755646,5.6116455070,5.00e-03": {
+    "T_t": 18,
+    "tr_dn2": 0.0023305110444627906,
+    "sequence": "yththxththxthththxthyththththyththththxthyths"
+  },
+  "2.4453638761,1.2229510694,2.9324945532,5.00e-03": {
+    "T_t": 16,
+    "tr_dn2": 0.0046937029969282545,
+    "sequence": "hyththythththythththxthththyththththxthz"
+  },
+  "0.1376135888,0.9694294696,4.2917231471,5.00e-03": {
+    "T_t": 18,
+    "tr_dn2": 0.003301385421163754,
+    "sequence": "shthyththththxthththxthththxththththythththsz"
+  },
+  "2.4314546363,2.7575545643,5.3947298352,2.00e-03": {
+    "T_t": 22,
+    "tr_dn2": 0.0016044883154157463,
+    "sequence": "shthythththththththxththxthyththththththxthththythty"
+  },
+  "2.1908462769,0.5917337285,6.1300160252,2.00e-03": {
+    "T_t": 21,
+    "tr_dn2": 0.001677658829033447,
+    "sequence": "ththxththxthththxththxthyththththththyththththxthsz"
+  },
+  "2.3911908961,4.9389876934,0.8049616945,2.00e-03": {
+    "T_t": 24,
+    "tr_dn2": 0.001975744662314543,
+    "sequence": "shthxththxthththxththxthththyththththxthththththyththththx"
+  },
+  "1.4149291538,2.3297926978,5.8230361611,2.00e-03": {
+    "T_t": 26,
+    "tr_dn2": 0.0006233906080191406,
+    "sequence": "hythxththxthththththxththxththththythththxthththyththythththtz"
+  },
+  "2.0227619311,5.1695636798,2.7860535791,2.00e-03": {
+    "T_t": 24,
+    "tr_dn2": 0.0011833963421713875,
+    "sequence": "yththyththththxthththththxththxthyththththxthythththxthyth"
+  },
+  "0.7138914990,3.4845589854,0.4009756459,2.00e-03": {
+    "T_t": 20,
+    "tr_dn2": 0.0018948733454572648,
+    "sequence": "hyththththththythththththythththxthyththythththsz"
+  },
+  "2.6000800098,3.9688644716,4.7632057501,2.00e-03": {
+    "T_t": 23,
+    "tr_dn2": 0.001518183101211779,
+    "sequence": "ythxthyththythththxththyththththxththxththyththythththxthsx"
+  },
+  "1.1137761770,6.0990755646,5.6116455070,2.00e-03": {
+    "T_t": 21,
+    "tr_dn2": 0.0017177038025013678,
+    "sequence": "shthxthyththyththyththththxthththththxththxthththxt"
+  },
+  "2.4453638761,1.2229510694,2.9324945532,2.00e-03": {
+    "T_t": 23,
+    "tr_dn2": 0.0014876309395755974,
+    "sequence": "thththxthythththththyththththxththththythththythththsx"
+  },
+  "0.1376135888,0.9694294696,4.2917231471,2.00e-03": {
+    "T_t": 21,
+    "tr_dn2": 0.0007316445646474427,
+    "sequence": "thxthythththxththyththththxthththththythththththsz"
+  },
+  "2.4314546363,2.7575545643,5.3947298352,1.00e-03": {
+    "T_t": 30,
+    "tr_dn2": 0.0010037557839333215,
+    "sequence": "ythxththththththxthyththththxththththyththththxthththxthththxthythththsx"
+  },
+  "2.1908462769,0.5917337285,6.1300160252,1.00e-03": {
+    "T_t": 26,
+    "tr_dn2": 0.0005853987407701087,
+    "sequence": "yththththxththxthyththththththythththxththyththythththyththt"
+  },
+  "2.3911908961,4.9389876934,0.8049616945,1.00e-03": {
+    "T_t": 27,
+    "tr_dn2": 0.0009905580824849142,
+    "sequence": "thxthththxthththxththxththythththxththxthythththththyththythththx"
+  },
+  "1.4149291538,2.3297926978,5.8230361611,1.00e-03": {
+    "T_t": 26,
+    "tr_dn2": 0.0006233906080191406,
+    "sequence": "hythxththxthththththxththxththththythththxthththyththythththtz"
+  },
+  "2.0227619311,5.1695636798,2.7860535791,1.00e-03": {
+    "T_t": 26,
+    "tr_dn2": 0.0007254810184168646,
+    "sequence": "hthththyththththxthththxththththxththxthththththythththythtx"
+  },
+  "0.7138914990,3.4845589854,0.4009756459,1.00e-03": {
+    "T_t": 22,
+    "tr_dn2": 0.0009114013217745742,
+    "sequence": "shththththxththxththxthththythththththythththththty"
+  },
+  "2.6000800098,3.9688644716,4.7632057501,1.00e-03": {
+    "T_t": 23,
+    "tr_dn2": 0.0006892664402455627,
+    "sequence": "yththththththyththythththxththxthththythththxththytht"
+  },
+  "1.1137761770,6.0990755646,5.6116455070,1.00e-03": {
+    "T_t": 29,
+    "tr_dn2": 0.0005263658839382719,
+    "sequence": "hythxthththxthththxthththyththyththythththythththththxththyththyththty"
+  },
+  "2.4453638761,1.2229510694,2.9324945532,1.00e-03": {
+    "T_t": 25,
+    "tr_dn2": 0.0009398961247182498,
+    "sequence": "hyththxthththyththththythththxthththxththyththythththththth"
+  },
+  "0.1376135888,0.9694294696,4.2917231471,1.00e-03": {
+    "T_t": 21,
+    "tr_dn2": 0.0007316445646474427,
+    "sequence": "thxthythththxththyththththxthththththythththththsz"
+  }
+}

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mixedsynth"
+version = "0.1.0"
+description = "Mixed-channel Clifford+T synthesis: gate-sequence ensembles and optimal probabilistic mixtures for single-qubit gates"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "TJ Colvin" }]
+dependencies = [
+    "numpy>=1.21",
+    "scipy>=1.7",
+    "mpmath>=1.2",
+    "gmpy2>=2.1.2",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+benchmark = ["trasyn"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"mixedsynth._pyliqtr" = ["LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

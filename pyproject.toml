@@ -9,6 +9,7 @@ description = "Mixed-channel Clifford+T synthesis: gate-sequence ensembles and o
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "TJ Colvin" }]
+license = { text = "MIT" }
 dependencies = [
     "numpy>=1.21",
     "scipy>=1.7",

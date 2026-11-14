@@ -19,6 +19,11 @@ Channel synthesis
   - dn2_moment = |M1|/2 + tr(C)/4 is the in-loop metric; the Choi-based
     diamond norm is computed once as a certificate.
 
+Sequences
+  - hst: one H/S/T/W alphabet for every tool (from_gridsynth, from_pyliqtr,
+    from_trasyn), exact matrices, the Matsumoto–Amano normal form in
+    gridsynth's layout with exact phase, and phase alignment to a target.
+
 Exact ring arithmetic (Z[ω], D[ω]) and the grid-problem solver are vendored
 from pyLIQTR under ``mixedsynth._pyliqtr`` (see its LICENSE).
 """
@@ -31,6 +36,7 @@ from .moments import compute_moments_mp, dn2_moment_mp
 from .harvest import harvest_rz, rz_angles_for_u3, rz_exact_mp
 from .u3 import optimize_u3, optimize_u3_hardcap
 from .genlist import approximate_rz_direct_set
+from . import hst
 from .sequences import (
     tokenize, t_count, circuit_order, sequence_to_matrix, sample,
 )

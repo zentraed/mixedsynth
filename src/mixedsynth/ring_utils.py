@@ -9,8 +9,9 @@ an already-known sequence.
 
 Convention (verified against trasyn.seq2mat):
     seq = "abc..." → result = G_a @ G_b @ G_c @ ...
-    i.e., characters are composed left-to-right via right-multiplication.
-    The first character corresponds to the first gate applied to the state.
+    i.e. matrix order: the last character is the first gate applied to the
+    state.  (mixedsynth.hst.hst_to_ring is the exact parser for H/S/T/W
+    strings; this function takes lowercase Trasyn-style strings.)
 
 Supported characters
 --------------------
@@ -62,7 +63,7 @@ def seq_to_ring_mat(seq: str) -> MAT_D_OMEGA:
     ----------
     seq : str
         Gate sequence using the character alphabet {h, t, s, x, y, z, i, w}.
-        Characters compose left-to-right: seq="ht" → H @ T (H applied first).
+        Matrix order: seq="ht" → H @ T (T applied first).
 
     Returns
     -------

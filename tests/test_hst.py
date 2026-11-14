@@ -278,3 +278,49 @@ def test_helpers():
     assert hst.t_count("HTSHTTW") == 3
     assert hst.to_circuit_order("HTSWWW") == ["S", "T", "H", "WWW"]
     assert hst.to_circuit_order("HT") == ["T", "H"]
+
+
+# ---------------------------------------------------------------------------
+# Compact normal form
+# ---------------------------------------------------------------------------
+
+def test_shortest_clifford_words():
+    best = hst._shortest_clifford()
+    assert len(best) == 24
+    words = [w for w, _ in best.values()]
+    assert len(set(words)) == 24 and max(map(len, words)) == 6
+    # No shorter H/S word reaches any Clifford (independent brute force).
+    reach = {}
+    for n in range(7):
+        for w in map("".join, itertools.product("HS", repeat=n)):
+            cls = hst.normal_form(w).rstrip("W")
+            reach.setdefault(cls, n)
+    for cls, (w, _) in best.items():
+        assert len(w) == reach[cls]
+
+
+def test_compact_form_on_random_words():
+    rng = random.Random(2)
+    for _ in range(300):
+        s = _random_word(rng, rng.randrange(0, 40))
+        nf, cf = hst.normal_form(s), hst.compact_form(s)
+        assert hst.hst_equal(cf, s)
+        assert hst.t_count(cf) == hst.t_count(nf)
+        # Fewer or equal gates; the W count can differ (it encodes the phase).
+        assert len(cf.rstrip("W")) <= len(nf.rstrip("W"))
+        assert hst.compact_form(cf) == cf and hst.is_compact_form(cf)
+        assert hst.normal_form(cf) == nf
+        assert hst.compact_form(_pad_identities(rng, s, 4)) == cf
+
+
+@pytest.mark.parametrize("theta,digits,seq", GRIDSYNTH)
+def test_compact_form_of_gridsynth(theta, digits, seq):
+    s = hst.from_gridsynth(seq)
+    cf = hst.compact_form(s)
+    assert hst.hst_equal(cf, s) and len(cf.rstrip("W")) <= len(s.rstrip("W"))
+    assert hst.t_count(cf) == hst.t_count(s)
+
+
+def test_is_compact_form_rejects_gridsynth_layout():
+    assert not hst.is_compact_form("SHHSSH")      # gridsynth layout of HSHS
+    assert hst.is_compact_form(hst.compact_form("SHHSSH"))

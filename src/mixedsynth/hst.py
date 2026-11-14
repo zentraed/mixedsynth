@@ -34,6 +34,10 @@ K, b, c pick one of the 24 Cliffords (newsynth's ``clifford_decompose_coset``)
 and d is the exact global phase. The form is unique per unitary, phase
 included, and has the minimal T-count.
 
+``compact_form`` is the same normal form with each Clifford tail written as
+its shortest H/S word (at most 6 letters instead of 9). It is the form for
+training labels; ``normal_form`` is the form that matches gridsynth.
+
 Exact matrices
 --------------
 ``hst_to_ring`` returns a ``MAT_D_OMEGA`` over D[ω] = Z[ω, 1/√2], reduced to the
@@ -47,6 +51,7 @@ picks the W^d that brings a string closest in phase to a numeric target and
 reports the leftover continuous phase.
 """
 
+import itertools
 import math
 import re
 from functools import lru_cache
@@ -61,6 +66,7 @@ __all__ = [
     "from_gridsynth", "from_pyliqtr", "from_trasyn",
     "hst_to_ring", "hst_to_matrix", "ring_key", "hst_equal",
     "normal_form", "is_normal_form", "split_normal_form", "clifford_word",
+    "compact_form", "is_compact_form",
     "align_phase", "t_count", "to_circuit_order", "is_hst",
 ]
 
@@ -342,6 +348,64 @@ def split_normal_form(nf: str) -> dict:
     sylls = (["T"] if t0 else []) + re.findall(r"HT|SHT", body)
     return {"syllables": sylls, "K": K or "", "b": 1 if x else 0,
             "c": len(s), "d": len(w)}
+
+
+# ---------------------------------------------------------------------------
+# Compact normal form: shortest Clifford words
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=1)
+def _shortest_clifford():
+    """
+    Gridsynth-layout Clifford (phase stripped) -> (shortest H/S word, its phase d).
+
+    Words are searched by length, then alphabetically (H before S), so the
+    choice is deterministic. The longest is 6 letters (gridsynth layout: 9).
+    """
+    table = _clifford_table()
+    best = {}
+    n = 0
+    while len(best) < 24:
+        for w in map("".join, itertools.product("HS", repeat=n)):
+            g = table[ring_key(w)]
+            cls = g.rstrip("W")
+            if cls not in best:
+                best[cls] = (w, len(g) - len(cls))
+        n += 1
+    return best
+
+
+def compact_form(seq) -> str:
+    """
+    Compact normal form: the normal form with each Clifford tail written as its
+    shortest H/S word.
+
+    ``(T)?(HT | SHT)*  C  W^d`` where C is the shortest word for the Clifford
+    (ties broken alphabetically) and d the exact phase. Like
+    :func:`normal_form` it is unique per unitary, phase included, and has the
+    minimal T-count; it differs only in how the Clifford is spelled. Use this
+    form for training labels; use :func:`normal_form` to compare with gridsynth.
+    """
+    nf = normal_form(seq)
+    mo = _NF_RE.match(nf)
+    prefix = (mo.group(1) or "") + mo.group(2)
+    tail = nf[len(prefix):]
+    cls = tail.rstrip("W")
+    word, d_word = _shortest_clifford()[cls]
+    d = (len(tail) - len(cls) - d_word) % 8
+    out = prefix + word + "W" * d
+    if ring_key(out) != ring_key(nf):
+        raise AssertionError("compact form does not reproduce the input")
+    return out
+
+
+def is_compact_form(seq: str) -> bool:
+    """True if ``seq`` is in compact normal form."""
+    mo = re.match(r"^(T?(?:HT|SHT)*)([HS]*?)(W{0,7})$", seq)
+    if not mo:
+        return False
+    words = {w for w, _ in _shortest_clifford().values()}
+    return mo.group(2) in words and compact_form(seq) == seq
 
 
 # ---------------------------------------------------------------------------

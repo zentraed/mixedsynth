@@ -19,6 +19,13 @@ Channel synthesis
   - dn2_moment = |M1|/2 + tr(C)/4 is the in-loop metric; the Choi-based
     diamond norm is computed once as a certificate.
 
+Single-sequence synthesis
+  - synthesize_u3_single: the best single Rz3·H·Rz2·H·Rz1 sequence for
+    U3(θ,φ,λ) with T_1+T_2+T_3 ≤ T_total, by exhaustive search over the same
+    harvested Rz candidates optimize_u3_hardcap uses (no mixed channel).
+  - enumerate_u3_splits: per split t_1+t_2+t_3 == T_total, the best (or
+    every) such sequence; splits with no harvested candidate are reported.
+
 Sequences
   - hst: one H/S/T/W alphabet for every tool (from_gridsynth, from_pyliqtr,
     from_trasyn), exact matrices, the Matsumoto–Amano normal form in
@@ -35,6 +42,7 @@ from .optimize import frank_wolfe_f64, stage2_lp, optimize_ms
 from .moments import compute_moments_mp, dn2_moment_mp
 from .harvest import harvest_rz, rz_angles_for_u3, rz_exact_mp
 from .u3 import optimize_u3, optimize_u3_hardcap
+from .u3_single import synthesize_u3_single, enumerate_u3_splits, harvest_u3
 from .genlist import approximate_rz_direct_set
 from . import hst
 from .sequences import (

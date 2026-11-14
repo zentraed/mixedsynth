@@ -38,16 +38,25 @@ def _mp_to_np(U_mp):
                      for i in range(2)], dtype=complex)
 
 
-def _channel_members(p, w_mp, t_counts, seqs, tol=1e-12):
+def _channel_members(p, w_mp, t_counts, seqs, components=None, tol=1e-12):
     """
     The synthesized mixed channel as a list of its active members, sorted by
     descending weight: [{"weight", "t_count", "sequence"}, ...].  Weights are
     mpmath mpf when the high-precision refinement ran, otherwise float.
+
+    If ``components`` is given (index-matched to ``seqs``; each entry the list
+    of three Rz component dicts, ordered rz1, rz2, rz3), each member also gets
+    "rz" (that list) and "t_split" ([t1, t2, t3]).
     """
     out = []
     for i in np.flatnonzero(p > tol):
         w = w_mp[i] if w_mp is not None else float(p[i])
-        out.append({"weight": w, "t_count": t_counts[i], "sequence": seqs[i]})
+        m = {"weight": w, "t_count": t_counts[i], "sequence": seqs[i]}
+        if components is not None:
+            rz = [dict(c) for c in components[i]]
+            m["t_split"] = [c["t_count"] for c in rz]
+            m["rz"] = rz
+        out.append(m)
     out.sort(key=lambda m: -float(m["weight"]))
     return out
 
@@ -325,8 +334,20 @@ def optimize_u3_hardcap(theta, phi, lam, t_total,
       t_counts   : list of total T-counts per composite member
       sequences  : Clifford+T gate string per composite (matrix order),
                    index-matched to U_list
+      components : per composite, the three Rz pieces it was built from,
+                   index-matched to U_list: a list [rz1, rz2, rz3] of dicts
+                   {"seq", "t_count", "angle"}, where seq is the harvested
+                   Clifford+T string for Rz(angle) (matrix order, pyLIQTR
+                   tokens, correct up to global phase), t_count its T-count
+                   and angle the Rz angle from rz_angles_for_u3:
+                   rz1 = Rz(λ−π/2) (rightmost, applied first),
+                   rz2 = Rz(θ), rz3 = Rz(φ+5π/2) (leftmost).  Always
+                   sequences[i] == rz3.seq + "H" + rz2.seq + "H" + rz1.seq and
+                   t_counts[i] == sum of the three t_counts.
       members    : the synthesized channel — active members only, as
-                   [{"weight", "t_count", "sequence"}, ...] sorted by weight
+                   [{"weight", "t_count", "sequence", "t_split", "rz"}, ...]
+                   sorted by weight; "rz" is the member's components entry
+                   (copied) and "t_split" = [t1, t2, t3] its per-Rz T-counts
       mags_f64   : list of composite rotation vector magnitudes
       angles     : Rz angles (for cross-check)
     """
@@ -406,6 +427,7 @@ def optimize_u3_hardcap(theta, phi, lam, t_total,
     # Build mpmath composites for selected combinations
     composite = []   # list of (t_sum, U_comp_mp)
     composite_seqs = []   # matrix-order gate strings, index-matched to composite
+    composite_comps = []  # [rz1, rz2, rz3] component dicts, index-matched to composite
     for t_level in sorted(pool.keys()):
         for fe, _, i1, i2, i3 in pool[t_level]:
             _t1, U1_mp = channels[0][i1]
@@ -416,6 +438,11 @@ def optimize_u3_hardcap(theta, phi, lam, t_total,
             composite.append((t_level, U_comp))
             composite_seqs.append(channel_seqs[2][i3] + "H" + channel_seqs[1][i2]
                                   + "H" + channel_seqs[0][i1])
+            composite_comps.append([
+                {"seq": channel_seqs[k][ik], "t_count": channels[k][ik][0],
+                 "angle": float(angles[k])}
+                for k, ik in enumerate((i1, i2, i3))
+            ])
 
     t_counts_raw = [t for t, _ in composite]
     U_list_raw   = [U for _, U in composite]
@@ -445,6 +472,7 @@ def optimize_u3_hardcap(theta, phi, lam, t_total,
     U_list    = [U_list_raw[i]  for i in keep]
     t_counts  = [t_counts_raw[i] for i in keep]
     seqs      = [composite_seqs[i] for i in keep]
+    comps     = [composite_comps[i] for i in keep]
     mags_f64  = mags_f64_raw[np.array(keep, dtype=int)]
 
     # Sort composite pool by |v| ascending so that idx[0] in optimize_ms
@@ -456,6 +484,7 @@ def optimize_u3_hardcap(theta, phi, lam, t_total,
     U_list    = [U_list[i]   for i in sort_idx]
     t_counts  = [t_counts[i] for i in sort_idx]
     seqs      = [seqs[i]     for i in sort_idx]
+    comps     = [comps[i]    for i in sort_idx]
 
     vs_f64 = np.array([[float(c) for c in v] for v in vs_mp], dtype=np.float64)
 
@@ -527,7 +556,8 @@ def optimize_u3_hardcap(theta, phi, lam, t_total,
         "w_mp"      : w_mp_full,
         "t_counts"  : t_counts,
         "sequences" : seqs,       # matrix-order gate strings, index-matched to U_list
-        "members"   : _channel_members(p, w_mp_full, t_counts, seqs),
+        "components": comps,      # [rz1, rz2, rz3] pieces per composite, index-matched to U_list
+        "members"   : _channel_members(p, w_mp_full, t_counts, seqs, comps),
         "mags_f64"  : list(mags_f64),
         "angles"    : angles,
     }

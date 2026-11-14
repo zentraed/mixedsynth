@@ -102,14 +102,49 @@ def _get_t1_seqs():
     return _T1_SEQS
 
 
-def _np_to_mp(M_np, dps):
-    """Convert a 2×2 numpy complex array to an mpmath matrix."""
+def _seq_to_mp(seq, dps):
+    """
+    Exact Clifford+T matrix of a matrix-order H/S/T string as an mpmath
+    matrix at dps + 10 digits (built from the exact gate entries, not from
+    the float64 BFS matrices, so the result does not depend on platform
+    floating-point details).
+    """
     with mp.workdps(dps + 10):
-        return mp.matrix([
-            [mp.mpc(str(float(M_np[i, j].real)), str(float(M_np[i, j].imag)))
-             for j in range(2)]
-            for i in range(2)
-        ])
+        r = 1 / mp.sqrt(2)
+        gates = {
+            "H": mp.matrix([[r, r], [r, -r]]),
+            "S": mp.matrix([[1, 0], [0, mp.j]]),
+            "T": mp.matrix([[1, 0], [0, mp.expjpi(mp.mpf(1) / 4)]]),
+        }
+        M = mp.eye(2)
+        for g in seq:
+            M = M * gates[g]
+        return M
+
+
+# Exact low-T matrices, cached per (t_target, dps).
+_LOW_T_MP = {}
+
+
+def _low_t_matrices_mp(t_target, dps):
+    key = (t_target, dps)
+    if key not in _LOW_T_MP:
+        seqs = _get_clifford_seqs() if t_target == 0 else _get_t1_seqs()
+        _LOW_T_MP[key] = [_seq_to_mp(s, dps) for s in seqs]
+    return _LOW_T_MP[key]
+
+
+def _phase_free_key(U, scale):
+    """
+    Hashable key of U up to global phase: rotate the first entry of modulus
+    > 1/4 onto the positive reals and round every entry to 1/scale.
+    Caller sets mp.workdps.
+    """
+    flat = [U[0, 0], U[0, 1], U[1, 0], U[1, 1]]
+    a = next(x for x in flat if abs(x) > 0.25)
+    ph = abs(a) / a
+    return tuple((int(mp.nint((x * ph).real * scale)),
+                  int(mp.nint((x * ph).imag * scale))) for x in flat)
 
 
 def _low_t_approx_mp(angle, t_target, n_keep, dps, with_sequences=False):
@@ -120,36 +155,48 @@ def _low_t_approx_mp(angle, t_target, n_keep, dps, with_sequences=False):
     t_target : 0 — return nearest Clifford(s)
                1 — return nearest C·T circuit(s)
 
-    Candidates are sorted by descending fidelity |Tr(Rz(angle)† · U)|²/4.
-    Global-phase variants of the same gate have identical fidelity AND will
-    produce identical rotation vectors via strip_phase; they are deduplicated
-    here so that the n_keep slots are filled with genuinely distinct gates
-    (distinct rounded fidelity values → distinct SU(2) orbits).
+    Candidates are the n_keep distinct gates (up to global phase) of highest
+    fidelity |Tr(Rz(angle)† · U)|²/4, in descending fidelity.  The 8
+    global-phase variants of each gate are collapsed to one, so the n_keep
+    slots are filled with genuinely distinct gates.
+
+    Exactness and determinism
+    -------------------------
+    Matrices and fidelities are computed in mpmath from the exact gate
+    entries.  Distinct gates often have exactly equal fidelity (for
+    Rz(φ+5π/2) with φ=2.3 at T=1, e.g. S†HT and SHSHT); such ties, and the
+    choice of word among phase variants, are broken by the fixed Clifford
+    enumeration order (shortest word first).  Earlier versions scored in
+    float64 and deduplicated by fidelity rounded to 8 decimals, which
+    (a) also discarded distinct gates that tie in fidelity and (b) chose
+    the survivor by last-ulp rounding noise, so the harvest depended on the
+    platform / numpy build.
     """
     assert t_target in (0, 1), "t_target must be 0 or 1"
 
-    rz_np = np.array(
-        [[np.exp(-1j * angle / 2), 0.0], [0.0, np.exp(1j * angle / 2)]],
-        dtype=complex,
-    )
-    tH = rz_np.conj().T
-
-    circuits = _get_cliffords() if t_target == 0 else _get_t1_circuits()
     seqs = _get_clifford_seqs() if t_target == 0 else _get_t1_seqs()
-    scored = [(abs(np.trace(tH @ U)) ** 2 / 4, i) for i, U in enumerate(circuits)]
-    scored.sort(key=lambda x: -x[0])
+    mats = _low_t_matrices_mp(t_target, dps)
+    with mp.workdps(dps + 10):
+        tH = rz_exact_mp(angle, dps).H
+        # Round to ~half the working precision: values equal in exact
+        # arithmetic compare equal; genuine differences survive.
+        scale = mp.mpf(10) ** ((dps + 10) // 2)
+        scored = []
+        for i, U in enumerate(mats):
+            tr = tH[0, 0] * U[0, 0] + tH[1, 1] * U[1, 1]   # Rz is diagonal
+            fe_key = int(mp.nint(abs(tr) ** 2 / 4 * scale))
+            scored.append((-fe_key, i, _phase_free_key(U, scale)))
+    scored.sort()
 
     result = []
-    seen_fidelities = set()
-    for fe, idx in scored:
+    seen_gates = set()
+    for _neg_fe, idx, gate_key in scored:
         if len(result) >= n_keep:
             break
-        # Deduplicate: global-phase variants all have the same rounded fidelity
-        fe_key = round(fe, 8)
-        if fe_key in seen_fidelities:
+        if gate_key in seen_gates:     # global-phase variant of a kept gate
             continue
-        seen_fidelities.add(fe_key)
-        U_mp = _np_to_mp(circuits[idx], dps)
+        seen_gates.add(gate_key)
+        U_mp = mats[idx].copy()
         if with_sequences:
             result.append((t_target, seqs[idx], U_mp))
         else:

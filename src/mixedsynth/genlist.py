@@ -54,6 +54,7 @@ Requires gmpy2 >= 2.1.2 (the 'gridsynth' conda environment).  gmpy2 2.0.8
 (the 'base' environment) will raise TypeError inside pyLIQTR point_enumeration.
 """
 
+from contextlib import contextmanager
 from enum import Enum, auto
 from math import gcd
 from typing import List, Optional, Tuple, Union
@@ -85,6 +86,28 @@ class ChannelMode(Enum):
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+@contextmanager
+def _gmpy2_local(**settings):
+    """
+    Run a block under a copy of the current gmpy2 context with `settings`
+    applied, restoring the previous context afterwards.
+
+    Same semantics as ``gmpy2.local_context(gmpy2.get_context(), **settings)``
+    (deprecated in gmpy2 2.3), and works on gmpy2 2.1, where
+    ``gmpy2.context(ctx, ...)`` is not accepted and a context used directly
+    as a context manager is not restored on exit.
+    """
+    old = gmpy2.get_context()
+    new = old.copy()
+    for name, value in settings.items():
+        setattr(new, name, value)
+    gmpy2.set_context(new)
+    try:
+        yield new
+    finally:
+        gmpy2.set_context(old)
+
 
 def _ring_to_matrix(u: Z_OMEGA, t: Z_OMEGA, k: int) -> np.ndarray:
     scale = 2 ** (-k / 2)
@@ -135,7 +158,7 @@ def _build_candidate_set(
     while theta > 2 * PI:
         theta -= 2 * PI
 
-    with gmpy2.local_context(gmpy2.get_context(), precision=bits):
+    with _gmpy2_local(precision=bits):
         ring_candidates = approxRz_direct_ensemble(eps, theta, n_cands)
 
     seen = {}  # (t_count, gate_string) -> unitary_matrix
@@ -231,7 +254,7 @@ def approximate_rz_direct_set(
     # Compute eps at reduced precision to avoid rounding into a tighter bin
     bits = max(int(gmpy2.ceil(gmpy2.log2(10 ** (2.5 * precision + 15)))), 100)
     gmpy2.get_context().precision = bits
-    with gmpy2.local_context(gmpy2.get_context(), round=gmpy2.RoundDown):
+    with _gmpy2_local(round=gmpy2.RoundDown):
         eps = mpfr("1e-{}".format(precision))
 
     init_angle = mpfr(numerator) * gmpy2.const_pi() / mpfr(denominator)
@@ -651,7 +674,7 @@ def _build_candidate_set_mp(
     while theta > 2 * PI:
         theta -= 2 * PI
 
-    with gmpy2.local_context(gmpy2.get_context(), precision=bits):
+    with _gmpy2_local(precision=bits):
         ring_candidates = approxRz_direct_ensemble(eps, theta, n_cands)
 
     seen = {}

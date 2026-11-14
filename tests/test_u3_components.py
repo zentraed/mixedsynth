@@ -139,8 +139,15 @@ def test_components_compose_to_member_unitary(result):
 
 # (d) results unchanged by the change ----------------------------------------
 
-# Recorded from optimize_u3_hardcap before components were added
-# (random.seed(1234), U3(1.1, 2.3, 0.4), default arguments).
+# Recorded from optimize_u3_hardcap (random.seed(1234), U3(1.1, 2.3, 0.4),
+# default arguments).  First recorded before components were added; the
+# member sequences (and E_T at T=10) were re-recorded when the T=0/T=1
+# harvest switched to exact mpmath scoring with deduplication by gate up to
+# global phase.  dn2, eps and the weights are unchanged, and every member is
+# the same unitary (up to phase) as before; only the word chosen among
+# equivalent spellings differs.  At T=10 the second member is now the T=2
+# word HSHSSTHSTH for the unitary previously spelled with 10 T gates
+# (HTHTHTSHTYHHTHTSHTHTSHTHTSH), so E_T drops from 9.3528 to 6.6101.
 BASELINE = {
     6: {
         "dn2": 0.013295014633567658,
@@ -148,20 +155,20 @@ BASELINE = {
         "E_T": 3.2635084806882597,
         "n_pool": 70,
         "members": [
-            ("0.446390902209854", 2, "SSSHTHSSSHTH"),
-            ("0.316975970157442", 3, "HTHSTHSST"),
+            ("0.446390902209854", 2, "HSHSSTHSTH"),
+            ("0.316975970157442", 3, "HTHTSHTSdHSdHHSSHSH"),
             ("0.233055224711204", 6, "THTHTHTSdHZHSHSHTSHTYS"),
-            ("0.00357790292150058", 6, "SHSSSHHHTSHTHTSHTHTHTSd"),
+            ("0.00357790292150053", 6, "SSHSHHHHTSHTHTSHTHTHTSd"),
         ],
     },
     10: {
         "dn2": 0.011603200312383927,
         "eps": 0.08920053380912611,
-        "E_T": 9.352838949837084,
+        "E_T": 6.6101433006105355,
         "n_pool": 110,
         "members": [
-            ("0.431391878588021", 9, "SHTHTHTSHTHTHTHTHTZHSHSSSHTHSSH"),
-            ("0.342836956153318", 10, "HTHTHTSHTYHHTHTSHTHTSHTHTSH"),
+            ("0.431391878588021", 9, "SHTHTHTSHTHTHTHTHTZHSHHHSSHSHT"),
+            ("0.342836956153318", 2, "HSHSSTHSTH"),
             ("0.117886579471213", 10, "HTHTHTSHTYHTSHTSdHSdHHTHTHTSHTX"),
             ("0.107884585787448", 8, "TSHTSdHSHTHTHTSHTHTHTHZH"),
         ],

@@ -25,11 +25,16 @@ To fill this gap, harvest_rz explicitly prepends T=0 and T=1 candidates:
         to SU(2) equivalence; confirmed numerically above).
 """
 
+import hashlib
+import random
+
+import gmpy2
 import numpy as np
 import mpmath as mp
 
 
-from mixedsynth.genlist import _sweep_candidate_set_mp
+from mixedsynth.genlist import _sweep_candidate_set_mp, _gmpy2_local
+from mixedsynth.sequences import tokenize, t_count as _seq_t_count
 
 # ---------------------------------------------------------------------------
 # Pre-computed Clifford group (T=0) and T-gate coset (T=1)
@@ -229,8 +234,161 @@ def rz_exact_mp(angle, dps=60):
         ])
 
 
+# ---------------------------------------------------------------------------
+# Odd T-counts (T >= 3): T · (even-T approximation of Rz(angle - pi/4))
+# ---------------------------------------------------------------------------
+
+# Diagonal tokens as powers of diag(1, omega), omega = e^{i pi/4}.  These are
+# exact (no global phase): S = diag(1, omega^2), Z = diag(1, omega^4), ...
+_DIAG_EXP = {"T": 1, "S": 2, "Z": 4, "Sd": 6}
+_DIAG_WORD = {0: "", 1: "T", 2: "S", 3: "ST", 4: "Z", 5: "ZT", 6: "Sd",
+              7: "SdT"}
+
+
+def _prepend_t(seq, e=1):
+    """
+    The matrix-order string for diag(1, ω^e)·seq (e = 1: T·seq, e = 7:
+    T†·seq), with the leading run of diagonal gates (T, S, Sd, Z) merged
+    into one word diag(1, ω^e').  The result is exactly the same matrix,
+    phase included.  When seq starts with an odd power of ω (e.g. "T…",
+    "TS…", "ST…") the merged word has no T, so the T-count drops by one
+    instead of rising by one.
+    """
+    toks = tokenize(seq)
+    i = 0
+    while i < len(toks) and toks[i] in _DIAG_EXP:
+        e += _DIAG_EXP[toks[i]]
+        i += 1
+    return _DIAG_WORD[e % 8] + "".join(toks[i:])
+
+
+def _minimal_t_string(seq):
+    """
+    (seq', t) with seq' a pyLIQTR-token string for the same unitary as seq up
+    to global phase and t its T-count, which is minimal (checked against the
+    Matsumoto–Amano normal form).  seq itself is returned unless it is not
+    T-optimal, in which case its compact normal form without the W phase
+    letters is returned.
+    """
+    from mixedsynth import hst
+    t = _seq_t_count(seq)
+    nf = hst.normal_form(hst.from_pyliqtr(seq))
+    if hst.t_count(nf) == t:
+        return seq, t
+    cf = hst.compact_form(nf)
+    return cf.rstrip("W"), hst.t_count(cf)
+
+
+def _odd_t_seed(angle):
+    """
+    Seed for the odd-level grid search, derived from the current state of the
+    global ``random`` generator and the angle without consuming it, so that
+    a seeded harvest stays reproducible and the even levels are unchanged.
+    """
+    h = hashlib.sha256(repr(random.getstate()).encode())
+    h.update(b"odd_t")
+    h.update(repr(float(angle)).encode())
+    return int.from_bytes(h.digest()[:8], "big")
+
+
+def _odd_t_approx_mp(angle, t_min, t_budget, n_keep, stride, dps, existing):
+    """
+    Odd-T (T >= 3) candidates for Rz(angle), as (t_count, seq, U_mp) triples.
+
+    T = e^{iπ/8} Rz(π/4) commutes with Rz, so if V approximates
+    Rz(angle − π/4) up to phase, T·V approximates Rz(angle) up to phase with
+    exactly the same error, and det(T·V) = ω·det(V) = ω (pyLIQTR's V has
+    det 1): its T-count is odd.  Conversely every odd-T U is T·(T†U) with
+    T†U of det ω^even, so this reaches the whole odd class.
+
+    Levels and ε.  Nominal level T runs over max(t_min, 3), +stride, …,
+    ≤ t_budget (the same stride semantics as the even sweep, which runs
+    max(t_min, 2), +stride, …); level T runs the existing grid search
+    (_sweep_candidate_set_mp, n_keep candidates) for Rz(angle − π/4) at the
+    target T − 1, i.e. at ε(T − 1) = 2^(−(T−1)/3).  That search returns V
+    with t(V) ≈ T − 1, so T·V has T-count ≈ T: the odd level reuses the
+    even level's precision rather than ε(T), which would give t(V) ≈ T and
+    land the candidate one level too high.  The error of T·V vs Rz(angle)
+    equals V's error vs Rz(angle − π/4), so an odd level's candidates are
+    as accurate as an even search at ε(T − 1) (looser than ε(T)).
+
+    T†.  T†·V', V' ≈ Rz(angle + π/4), gives the same class (T†V' =
+    T·(S†V'), S†V' ≈ Rz(angle − π/4)) and, in tests, the same best error per
+    level, so it is used only as a fallback: an odd nominal level ≤ t_budget
+    that the T·V pass left empty (the search at ε(T − 1) skipped
+    t(V) = T − 1) gets one T†·V' search at the same target, which is a
+    different grid problem and usually fills it.
+
+    The string is "T" (or "SdT") + V with leading diagonal gates merged
+    (_prepend_t), then checked for T-optimality against hst.compact_form;
+    if V starts with an odd diagonal power the T-count is t(V) − 1, still
+    odd.  t_count is always the actual (minimal) T-count of the returned
+    string, and the candidate is filed under that count, not the nominal
+    level; candidates with actual T < max(t_min, 3) are dropped (T = 1 is
+    covered exhaustively by the C·T list).  Like the even sweep, candidates
+    above t_budget are kept (callers filter by budget).  Candidates equal up
+    to global phase to one in ``existing`` or to an earlier odd candidate
+    are dropped.  Nothing is filtered by error.
+
+    The search draws from a private seed (_odd_t_seed) and restores the
+    global ``random`` state afterwards, so the global stream — and hence
+    every even-level candidate of this and later harvests — is the same as
+    with odd_t=False.
+    """
+    lo = max(t_min, 3)
+    if lo > t_budget:
+        return []
+    levels = list(range(lo, t_budget + 1, stride))
+
+    with mp.workdps(dps + 10):
+        scale = mp.mpf(10) ** ((dps + 10) // 2)
+        seen = {_phase_free_key(U, scale) for U in existing}
+    out = []
+
+    def collect(sign, raw):
+        # sign +1: T·V, V ≈ Rz(angle − π/4);  −1: T†·V, V ≈ Rz(angle + π/4)
+        with mp.workdps(dps + 10):
+            G = mp.matrix([[1, 0], [0, mp.expjpi(mp.mpf(sign) / 4)]])
+            for _tv, seq_v, V in raw:
+                seq, t = _minimal_t_string(_prepend_t(seq_v, sign % 8))
+                if t < lo:
+                    continue
+                U = G * V
+                k = _phase_free_key(U, scale)
+                if k in seen:
+                    continue
+                seen.add(k)
+                out.append((t, seq, U))
+
+    state = random.getstate()
+    random.seed(_odd_t_seed(angle))
+    try:
+        collect(+1, _sweep_candidate_set_mp(
+            _shifted_angle(angle, -1), lo - 1, t_budget - 1,
+            n_cands_per_level=n_keep, t_step=stride, dps=dps))
+        # Fallback: a nominal level the T·V pass left empty (the grid search
+        # at ε(T − 1) jumped over t(V) = T − 1) gets one T†·V search at the
+        # same ε for Rz(angle + π/4), a different grid problem.
+        have = {t for t, _s, _U in out}
+        for T in levels:
+            if T % 2 == 1 and T not in have:
+                collect(-1, _sweep_candidate_set_mp(
+                    _shifted_angle(angle, +1), T - 1, T - 1,
+                    n_cands_per_level=n_keep, dps=dps))
+                have = {t for t, _s, _U in out}
+    finally:
+        random.setstate(state)
+    return out
+
+
+def _shifted_angle(angle, sign):
+    """angle + sign·π/4 as a 256-bit mpfr (the grid solver takes mpfr)."""
+    with _gmpy2_local(precision=256):
+        return gmpy2.mpfr(angle) + sign * gmpy2.const_pi() / 4
+
+
 def harvest_rz(angle, t_min=0, t_budget=50, n_keep=5, stride=1, dps=60,
-               with_sequences=False):
+               with_sequences=False, odd_t=False):
     """
     Harvest Clifford+T approximations of Rz(angle) within a T-gate budget.
 
@@ -243,6 +401,10 @@ def harvest_rz(angle, t_min=0, t_budget=50, n_keep=5, stride=1, dps=60,
     with_sequences : if True, also return the Clifford+T gate string of each
                 candidate (matrix order, tokens H S Sd X Y Z T)
 
+    odd_t     : if True, also harvest odd T-counts T ≥ 3 (see below).  The
+                default False gives exactly the candidates of earlier
+                versions.
+
     Returns list of (t_count: int, U_mp: mpmath 2×2 matrix), sorted by t_count,
     or (t_count, seq: str, U_mp) triples when with_sequences=True.
 
@@ -252,6 +414,17 @@ def harvest_rz(angle, t_min=0, t_budget=50, n_keep=5, stride=1, dps=60,
     t_min ≤ 0 or t_min ≤ 1, this function prepends explicit T=0 (nearest
     Clifford) and T=1 (nearest C·T circuit) candidates before the gridsynth
     sweep.  The sweep starts from max(t_min, 2) to avoid duplicating effort.
+
+    Odd T ≥ 3 (odd_t=True)
+    ----------------------
+    The grid solver is phase-exact (det 1), so it only yields even T.  With
+    odd_t=True, odd levels T = max(t_min, 3), +stride, …, ≤ t_budget are
+    added as T·V, V an even-T candidate for Rz(angle − π/4) from the same
+    solver at ε(T − 1) (details in _odd_t_approx_mp).  They are computed
+    after all other levels with a private seed derived from the current
+    ``random`` state, which is restored, so the odd_t=False candidates
+    appear unchanged and in the same order (the result is stably sorted by
+    T) and later harvests see the same global ``random`` stream.
     """
     members = []
 
@@ -277,6 +450,16 @@ def harvest_rz(angle, t_min=0, t_budget=50, n_keep=5, stride=1, dps=60,
         else:
             members.extend((t, U) for (t, _seq, U) in raw)
 
-    # Sort by T ascending (T=0 and T=1 are already first)
+    # ---- odd T >= 3: T · (even-T candidates for Rz(angle - pi/4)) ----
+    if odd_t:
+        odd = _odd_t_approx_mp(angle, t_min, t_budget, n_keep, stride, dps,
+                               [m[-1] for m in members])
+        if with_sequences:
+            members.extend(odd)
+        else:
+            members.extend((t, U) for (t, _seq, U) in odd)
+
+    # Sort by T ascending (stable: T=0 and T=1 first, odd levels after the
+    # even candidates of earlier levels in their original order)
     members.sort(key=lambda x: x[0])
     return members

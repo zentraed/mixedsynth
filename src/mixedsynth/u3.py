@@ -290,7 +290,7 @@ def optimize_u3(theta, phi, lam, t_budget=None, t_total=None,
 def optimize_u3_hardcap(theta, phi, lam, t_total,
                          n_keep=5, n_keep_total=10, dps=60,
                          enclosed_tol_ratio=0.1, fw_iter=2000,
-                         t_min=0, stride=None):
+                         t_min=0, stride=None, odd_t=False):
     """
     Optimize the U3 mixed channel under the hard constraint T_1+T_2+T_3 ≤ t_total.
 
@@ -311,6 +311,8 @@ def optimize_u3_hardcap(theta, phi, lam, t_total,
     t_min          : minimum T per Rz channel (0 = allow Clifford approximations)
     stride         : T-level step for harvest (default: max(1, t_total//30))
     dps            : mpmath decimal places
+    odd_t          : also harvest odd T ≥ 3 Rz levels (see harvest_rz);
+                     False (default) reproduces earlier harvests exactly
 
     Returns
     -------
@@ -364,7 +366,7 @@ def optimize_u3_hardcap(theta, phi, lam, t_total,
     for angle in angles:
         members = harvest_rz(angle, t_min=t_min, t_budget=t_total,
                              n_keep=n_keep, stride=stride, dps=dps,
-                             with_sequences=True)
+                             with_sequences=True, odd_t=odd_t)
         channels.append([(t, U) for t, _s, U in members])   # list of (t_count, U_mp)
         channel_seqs.append([sq for _t, sq, _U in members])
     t_sweep = time.time() - t0

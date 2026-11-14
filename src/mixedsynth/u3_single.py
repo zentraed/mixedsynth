@@ -72,14 +72,16 @@ def _mp_to_np(U_mp):
 # ---------------------------------------------------------------------------
 
 def harvest_u3(theta, phi, lam, t_budget, n_keep=5, t_min=0, stride=None,
-               dps=60):
+               dps=60, odd_t=False):
     """
     Harvest Rz candidates for the three U3 angles, in the same order and with
     the same arguments as :func:`optimize_u3_hardcap` (rz1, rz2, rz3; each
     ``harvest_rz(angle, t_min, t_budget, n_keep, stride, dps,
     with_sequences=True)``; stride default ``max(1, t_budget // 30)``).  With
     the same ``random`` seed it reproduces hardcap's harvest for
-    ``t_total = t_budget``.
+    ``t_total = t_budget``.  odd_t is passed to harvest_rz (odd T ≥ 3
+    levels; False reproduces earlier harvests exactly, and True leaves the
+    odd_t=False candidates unchanged, in the same order, as a subsequence).
 
     Returns a list of three lists of ``(t_count, seq, U_mp)`` triples, ordered
     rz1, rz2, rz3, each sorted by T ascending.  t_count is the actual T-count
@@ -92,7 +94,8 @@ def harvest_u3(theta, phi, lam, t_budget, n_keep=5, t_min=0, stride=None,
     if stride is None:
         stride = max(1, t_budget // 30)
     return [list(harvest_rz(a, t_min=t_min, t_budget=t_budget, n_keep=n_keep,
-                            stride=stride, dps=dps, with_sequences=True))
+                            stride=stride, dps=dps, with_sequences=True,
+                            odd_t=odd_t))
             for a in rz_angles_for_u3(theta, phi, lam)]
 
 
@@ -219,7 +222,7 @@ def _float_search(sc, chans, t_total, shortlist):
 
 def synthesize_u3_single(theta, phi, lam, t_total, n_keep=5, t_min=0,
                          stride=None, dps=60, pool=False, pool_size=128,
-                         candidates=None):
+                         candidates=None, odd_t=False):
     """
     Best single Clifford+T sequence Rz3·H·Rz2·H·Rz1 for U3(θ,φ,λ) with
     T1+T2+T3 ≤ t_total.
@@ -241,12 +244,12 @@ def synthesize_u3_single(theta, phi, lam, t_total, n_keep=5, t_min=0,
     theta, phi, lam : U3 angles (Trasyn convention,
         U3 = [[cos(θ/2), −e^{iλ} sin(θ/2)], [e^{iφ} sin(θ/2), e^{i(φ+λ)} cos(θ/2)]]).
     t_total    : hard T budget for the whole sequence.
-    n_keep, t_min, stride, dps : harvest arguments (see harvest_u3).
+    n_keep, t_min, stride, dps, odd_t : harvest arguments (see harvest_u3).
     pool       : if True, also return the ranked "pool".
     pool_size  : number of best combinations in "pool" (winner included).
     candidates : optional output of harvest_u3; no harvest is run
-                 (n_keep/t_min/stride ignored), and only its candidates with
-                 T ≤ t_total are used.
+                 (n_keep/t_min/stride/odd_t ignored), and only its
+                 candidates with T ≤ t_total are used.
 
     Returns
     -------
@@ -273,7 +276,8 @@ def synthesize_u3_single(theta, phi, lam, t_total, n_keep=5, t_min=0,
     t0 = time.time()
     if candidates is None:
         candidates = harvest_u3(theta, phi, lam, t_total, n_keep=n_keep,
-                                t_min=t_min, stride=stride, dps=dps)
+                                t_min=t_min, stride=stride, dps=dps,
+                                odd_t=odd_t)
         t_harvest = time.time() - t0
     else:
         t_harvest = 0.0
@@ -308,7 +312,7 @@ def synthesize_u3_single(theta, phi, lam, t_total, n_keep=5, t_min=0,
 
 def enumerate_u3_splits(theta, phi, lam, t_total, per_split="best",
                         piece="all", n_keep=5, t_min=0, stride=None, dps=60,
-                        candidates=None):
+                        candidates=None, odd_t=False):
     """
     Composite sequences Rz3·H·Rz2·H·Rz1 for U3(θ,φ,λ) for every split
     (t1, t2, t3) of nonnegative integers with t1+t2+t3 == t_total and each
@@ -318,10 +322,11 @@ def enumerate_u3_splits(theta, phi, lam, t_total, per_split="best",
 
     Splits are visited in lexicographic order of (t1, t2, t3).  A piece with
     T-count t_k must be a harvested candidate for channel k whose actual
-    T-count is exactly t_k.  The gridsynth sweep only yields even T ≥ 2
-    (plus the explicit T=0 Cliffords and T=1 C·T circuits), so splits with an
-    odd t_k ≥ 3 normally have no candidate; such splits are not dropped
-    silently but listed in "missing".
+    T-count is exactly t_k.  By default the gridsynth sweep only yields even
+    T ≥ 2 (plus the explicit T=0 Cliffords and T=1 C·T circuits), so splits
+    with an odd t_k ≥ 3 normally have no candidate; odd_t=True harvests odd
+    levels T ≥ 3 too (see harvest_rz).  Splits without a candidate are not
+    dropped silently but listed in "missing".
 
     per_split : "best" — one entry per available split: the combination of
                 that split's candidates with the smallest err (ties as in the
@@ -334,8 +339,10 @@ def enumerate_u3_splits(theta, phi, lam, t_total, per_split="best",
                 ties by string), then combine.  Note the per-split best
                 composite need not use the per-piece best candidates, because
                 piece errors can partly cancel.
-    candidates: optional harvest_u3 output to reuse; n_keep/t_min/stride are
-                then ignored for the harvest (t_min still restricts splits).
+    candidates: optional harvest_u3 output to reuse; n_keep/t_min/stride/
+                odd_t are then ignored for the harvest (t_min still
+                restricts splits).
+    odd_t     : harvest odd T ≥ 3 levels too (see harvest_u3).
 
     Returns a dict
       entries   : list of {"sequence", "t_count" (== t_total), "t_split",
@@ -359,7 +366,8 @@ def enumerate_u3_splits(theta, phi, lam, t_total, per_split="best",
     t0 = time.time()
     if candidates is None:
         candidates = harvest_u3(theta, phi, lam, t_total, n_keep=n_keep,
-                                t_min=t_min, stride=stride, dps=dps)
+                                t_min=t_min, stride=stride, dps=dps,
+                                odd_t=odd_t)
         t_harvest = time.time() - t0
     else:
         t_harvest = 0.0

@@ -273,3 +273,28 @@ def test_enumerate_harvests_once_with_seed():
     b = enumerate_u3_splits(*tg, 4, candidates=harvest(tg, 4))
     assert [e["sequence"] for e in a["entries"]] == [e["sequence"] for e in b["entries"]]
     assert a["t_harvest"] > 0 and b["t_harvest"] == 0.0
+
+
+def test_enumerate_caches_do_not_change_results():
+    """Cached piece matrices and (Rz3, Rz2) products give the cold-cache output."""
+    from mixedsynth import u3_single
+    th, ph, la = 0.7, 1.9, -0.4
+    random.seed(5)
+    cands = u3_single.harvest_u3(th, ph, la, 6, n_keep=3, dps=40)
+
+    def run():
+        return [u3_single.enumerate_u3_splits(th, ph, la, b, candidates=cands, dps=40)["entries"]
+                for b in range(7)]
+
+    u3_single._piece_matrices.cache_clear()
+    u3_single._left_product.cache_clear()
+    cold = run()
+    warm = run()
+    assert warm == cold
+    # the cached left product is U3·H·U2·H evaluated left to right
+    s3, s2 = cands[2][-1][1], cands[1][-1][1]
+    mp = u3_single.mp
+    with mp.workdps(50):
+        H = mp.matrix([[1, 1], [1, -1]]) / mp.sqrt(2)
+        direct = sequence_to_matrix(s3, dps=40) * H * sequence_to_matrix(s2, dps=40) * H
+    assert u3_single._left_product(s3, s2, 40) == direct

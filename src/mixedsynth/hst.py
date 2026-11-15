@@ -38,11 +38,20 @@ included, and has the minimal T-count.
 its shortest H/S word (at most 6 letters instead of 9). It is the form for
 training labels; ``normal_form`` is the form that matches gridsynth.
 
+For strings both are computed by rewriting, letter by letter, with tables of
+the 192 Cliffords (no matrix arithmetic; linear in the length; see the
+comment above ``_nf_tables``). ``normal_form_product(*seqs)`` and
+``compact_form_product(*seqs)`` give the form of a product of strings and
+reuse the cached state of the first factor. A ``MAT_D_OMEGA`` input goes
+through pyLIQTR's exact decomposition, which the tests use as the reference.
+
 Exact matrices
 --------------
 ``hst_to_ring`` returns a ``MAT_D_OMEGA`` over D[ω] = Z[ω, 1/√2], reduced to the
 smallest denominator exponent k, so that two strings are the same unitary
-exactly when ``ring_key`` agrees.
+exactly when ``ring_key`` agrees. ``hst_product_to_ring(*seqs)`` does the same
+for a product from per-factor cached matrices, and
+``align_phase_product(seqs, target)`` aligns the phase of a product.
 
 Phase alignment
 ---------------
@@ -64,10 +73,10 @@ from ._pyliqtr import exact_decomp as _ed
 
 __all__ = [
     "from_gridsynth", "from_pyliqtr", "from_trasyn",
-    "hst_to_ring", "hst_to_matrix", "ring_key", "hst_equal",
-    "normal_form", "is_normal_form", "split_normal_form", "clifford_word",
-    "compact_form", "is_compact_form",
-    "align_phase", "t_count", "to_circuit_order", "is_hst",
+    "hst_to_ring", "hst_product_to_ring", "hst_to_matrix", "ring_key", "hst_equal",
+    "normal_form", "normal_form_product", "is_normal_form", "split_normal_form",
+    "clifford_word", "compact_form", "compact_form_product", "is_compact_form",
+    "align_phase", "align_phase_product", "t_count", "to_circuit_order", "is_hst",
 ]
 
 # ---------------------------------------------------------------------------
@@ -192,24 +201,61 @@ _GATE = {"H": MAT_D_OMEGA.H(), "S": MAT_D_OMEGA.S(), "T": MAT_D_OMEGA.T(), "W": 
 
 def _canonical(m: MAT_D_OMEGA) -> MAT_D_OMEGA:
     """Divide out factors of √2 until the denominator exponent k is minimal."""
-    entries = m.elements()
+    # Same steps as rings.is_reducible / rings.reduce, on plain integers.
+    a = [(e.a1, e.a2, e.a3, e.a4) for e in m.elements()]
     k = m.k
-    while all(is_reducible(e) for e in entries) and any(e != 0 for e in entries):
-        entries = [_reduce_sqrt2(e) for e in entries]
-        k -= 1
-    return MAT_D_OMEGA(*entries, k)
+    if any(any(t) for t in a):
+        while all((a1 + a3) % 2 == 0 and (a2 + a4) % 2 == 0 for a1, a2, a3, a4 in a):
+            a = [((a2 - a4) // 2, (a1 + a3) // 2, (a2 + a4) // 2, (a3 - a1) // 2)
+                 for a1, a2, a3, a4 in a]
+            k -= 1
+    return MAT_D_OMEGA(*(Z_OMEGA(*t) for t in a), k)
+
+
+_RING_BLOCK = 6   # hst_to_ring multiplies precomputed products of this many letters
+
+
+@lru_cache(maxsize=1 << 14)
+def _block_ring(block: str) -> MAT_D_OMEGA:
+    """Exact reduced product of a short block of H/S/T/W letters (cached)."""
+    m = _GATE[block[0]]
+    for c in block[1:]:
+        m = m @ _GATE[c]
+    return _canonical(m)
 
 
 def hst_to_ring(seq: str) -> MAT_D_OMEGA:
     """
     Exact matrix of an HST string over D[ω], with minimal denominator exponent.
 
-    ``W`` letters may appear anywhere (they are scalars).
+    ``W`` letters may appear anywhere (they are scalars). The string is
+    multiplied in blocks of ``_RING_BLOCK`` letters whose products are cached;
+    the result is exact and reduced, so it does not depend on the blocking.
     """
     _check_hst(seq)
     m = MAT_D_OMEGA.I()
-    for c in seq:
-        m = m @ _GATE[c]
+    for i in range(0, len(seq), _RING_BLOCK):
+        m = m @ _block_ring(seq[i:i + _RING_BLOCK])
+    return _canonical(m)
+
+
+@lru_cache(maxsize=1 << 14)
+def _factor_ring(seq: str) -> MAT_D_OMEGA:
+    return hst_to_ring(seq)
+
+
+def hst_product_to_ring(*seqs) -> MAT_D_OMEGA:
+    """
+    Exact matrix of the product ``seqs[0]·seqs[1]·…`` of HST strings (matrix
+    order), equal to ``hst_to_ring("".join(seqs))``.
+
+    Each factor's matrix is cached per string, so products of recurring
+    factors (for example Rz3·H·Rz2·H·Rz1 over a few dozen Rz candidates) cost
+    one matrix product per factor.
+    """
+    m = MAT_D_OMEGA.I()
+    for s in seqs:
+        m = m @ _factor_ring(s)
     return _canonical(m)
 
 
@@ -308,6 +354,134 @@ def _inverse_word(seq: str) -> str:
     return "".join(inv[c] for c in reversed(seq))
 
 
+# ---------------------------------------------------------------------------
+# Normal form by rewriting (strings): no matrix arithmetic per call
+# ---------------------------------------------------------------------------
+#
+# A word in normal form is a syllable prefix P = (T)?(HT|SHT)* followed by a
+# Clifford C = K·X^b·S^c·ω^d (gridsynth layout, 192 elements with phase).
+# Multiplying on the right by a letter keeps that shape:
+#
+#   H, S, W :  P·C·g  = P·(C·g)                        (C·g is a Clifford)
+#   T       :  P·C·T  = P·K·T·C',  C' = T†·X^b·S^c·ω^d·T  (a Clifford, since
+#              X^b·S^c·ω^d normalises T up to a Clifford: T†·S·T = S,
+#              T†·X·T = ω·S†·X)
+#              K = H or SH : append the syllable K·T;
+#              K = ""      : if P is empty, P = "T"; otherwise the last
+#                            syllable σ'·T of P meets the new T, σ'·T·T =
+#                            σ'·S, and P loses that syllable while the
+#                            Clifford becomes σ'·S·C'.
+#
+# The result is always in the (T)?(HT|SHT)* C layout and equals the input
+# exactly, so by uniqueness of the Matsumoto–Amano form it is the normal form.
+# The tables below are built once from exact ring matrices.
+
+def _clifford_index(K, b, c, d):
+    return ((("", "H", "SH").index(K) * 2 + b) * 4 + c) * 8 + d
+
+
+@lru_cache(maxsize=1)
+def _nf_tables():
+    """
+    (words, right, t_step):
+      words[i]   gridsynth-layout word of Clifford i (0..191)
+      right[g][i] index of Clifford_i · g for g in "H", "S", "W"
+      t_step[i]  (K, j) with Clifford_i · T = K · T · Clifford_j
+    """
+    table = _clifford_table()
+    words = [None] * 192
+    for K in ("", "H", "SH"):
+        for b in (0, 1):
+            for c in range(4):
+                for d in range(8):
+                    words[_clifford_index(K, b, c, d)] = clifford_word(K, b, c, d)
+    index = {ring_key(w): i for i, w in enumerate(words)}
+    if len(index) != 192 or any(table[k] != words[i] for k, i in index.items()):
+        raise AssertionError("Clifford index does not match the Clifford table")
+    right = {g: [index[ring_key(w + g)] for w in words] for g in ("H", "S", "W")}
+    t_step = []
+    for i, w in enumerate(words):
+        K = ("", "H", "SH")[i // 64]
+        rest = w[len(K):]                       # X^b·S^c·ω^d
+        j = index[ring_key("T" * 7 + rest + "T")]
+        if ring_key(w + "T") != ring_key(K + "T" + words[j]):
+            raise AssertionError("bad T rewrite for Clifford %r" % w)
+        t_step.append((K, j))
+    return words, right, tuple(t_step)
+
+
+def _nf_feed(sylls, cl, seq, tables):
+    """
+    Right-multiply the normal-form state (syllable list ``sylls``, modified in
+    place, and Clifford index ``cl``) by the letters of ``seq``; returns the
+    new Clifford index.
+    """
+    words, right, t_step = tables
+    rH, rS, rW = right["H"], right["S"], right["W"]
+    for g in seq:
+        if g == "H":
+            cl = rH[cl]
+        elif g == "S":
+            cl = rS[cl]
+        elif g == "W":
+            cl = rW[cl]
+        else:  # "T"
+            K, cl = t_step[cl]
+            if K:
+                sylls.append(K + "T")
+            elif not sylls:
+                sylls.append("T")
+            else:
+                # σ'·T·T·C' = σ'·S·C'
+                c2 = rS[_clifford_index(sylls.pop()[:-1], 0, 0, 0)]
+                for h in words[cl]:
+                    c2 = right[h][c2]
+                cl = c2
+    return cl
+
+
+@lru_cache(maxsize=1 << 16)
+def _nf_state(seq: str) -> tuple:
+    """(syllables, Clifford index) of the normal form of an HST string (cached)."""
+    sylls = []
+    cl = _nf_feed(sylls, 0, seq, _nf_tables())
+    return tuple(sylls), cl
+
+
+def _nf_string(seq: str) -> str:
+    """Gridsynth-layout normal form of an HST string by rewriting."""
+    sylls, cl = _nf_state(seq)
+    return "".join(sylls) + _nf_tables()[0][cl]
+
+
+def normal_form_product(*seqs) -> str:
+    """
+    Normal form (gridsynth layout) of the product ``seqs[0]·seqs[1]·…`` of HST
+    strings, in matrix order; the same string as ``normal_form("".join(seqs))``.
+
+    The rewriting state after ``seqs[0]`` is cached per string, so products
+    that share a left factor (for example Rz3·H·Rz2·H·Rz1 over many Rz2, Rz1)
+    only pay for the later factors, letter by letter, without matrix
+    arithmetic.
+    """
+    for s in seqs:
+        _check_hst(s)
+    if not seqs:
+        return ""
+    tables = _nf_tables()
+    sylls, cl = _nf_state(seqs[0])
+    sylls = list(sylls)
+    for s in seqs[1:]:
+        cl = _nf_feed(sylls, cl, s, tables)
+    return "".join(sylls) + tables[0][cl]
+
+
+def compact_form_product(*seqs) -> str:
+    """Compact normal form of the product ``seqs[0]·seqs[1]·…`` (see
+    :func:`normal_form_product` and :func:`compact_form`)."""
+    return _compact_from_nf(normal_form_product(*seqs))
+
+
 def normal_form(seq) -> str:
     """
     Matsumoto–Amano normal form of an HST string (or a ``MAT_D_OMEGA``).
@@ -315,6 +489,22 @@ def normal_form(seq) -> str:
     Returns ``(T)?(HT|SHT)* K (HSSH)^b S^c W^d`` (see the module docstring).
     Global phase is kept exactly: the result is the same matrix as the input.
     Its T-count is minimal over all Clifford+T words for that unitary.
+
+    A string is rewritten letter by letter (see the comment above
+    ``_nf_tables``; linear in its length, results cached per string); a
+    ``MAT_D_OMEGA`` goes through pyLIQTR's exact decomposition
+    (``_normal_form_by_decompose``, the reference the tests compare with).
+    """
+    if isinstance(seq, str):
+        _check_hst(seq)
+        return _nf_string(seq)
+    return _normal_form_by_decompose(seq)
+
+
+def _normal_form_by_decompose(seq) -> str:
+    """
+    Reference implementation of :func:`normal_form` through exact matrices and
+    pyLIQTR's SO(3) ``decompose`` (used for ``MAT_D_OMEGA`` input and in tests).
     """
     m = hst_to_ring(seq) if isinstance(seq, str) else _canonical(seq)
     prefix = _syllables(m)
@@ -386,17 +576,28 @@ def compact_form(seq) -> str:
     minimal T-count; it differs only in how the Clifford is spelled. Use this
     form for training labels; use :func:`normal_form` to compare with gridsynth.
     """
-    nf = normal_form(seq)
+    return _compact_from_nf(normal_form(seq))
+
+
+@lru_cache(maxsize=1)
+def _compact_tails():
+    """Gridsynth-layout Clifford tail (with W^d) -> compact tail, all 192, checked exactly."""
+    out = {}
+    for tail in _clifford_table().values():
+        cls = tail.rstrip("W")
+        word, d_word = _shortest_clifford()[cls]
+        comp = word + "W" * ((len(tail) - len(cls) - d_word) % 8)
+        if ring_key(comp) != ring_key(tail):
+            raise AssertionError("compact Clifford word %r is not %r" % (comp, tail))
+        out[tail] = comp
+    return out
+
+
+def _compact_from_nf(nf: str) -> str:
+    """Compact form of a string already in gridsynth-layout normal form."""
     mo = _NF_RE.match(nf)
     prefix = (mo.group(1) or "") + mo.group(2)
-    tail = nf[len(prefix):]
-    cls = tail.rstrip("W")
-    word, d_word = _shortest_clifford()[cls]
-    d = (len(tail) - len(cls) - d_word) % 8
-    out = prefix + word + "W" * d
-    if ring_key(out) != ring_key(nf):
-        raise AssertionError("compact form does not reproduce the input")
-    return out
+    return prefix + _compact_tails()[nf[len(prefix):]]
 
 
 def is_compact_form(seq: str) -> bool:
@@ -429,7 +630,24 @@ def align_phase(seq: str, target) -> tuple:
     """
     _check_hst(seq)
     gates = seq.replace("W", "")
-    V = hst_to_matrix(gates)
+    return _align_gates(gates, hst_to_ring(gates).to_array(), target)
+
+
+def align_phase_product(seqs, target) -> tuple:
+    """
+    :func:`align_phase` of the product ``seqs[0]·seqs[1]·…`` of HST strings:
+    the same ``(aligned, residual)`` as ``align_phase("".join(seqs), target)``,
+    with the exact matrix assembled from per-factor cached matrices
+    (:func:`hst_product_to_ring`).
+    """
+    gates = [s.replace("W", "") for s in seqs]
+    for g in gates:
+        _check_hst(g)
+    return _align_gates("".join(gates), hst_product_to_ring(*gates).to_array(), target)
+
+
+def _align_gates(gates, V, target):
+    """align_phase for a W-free string ``gates`` with numeric matrix ``V``."""
     U = np.array([[complex(target[i, j]) for j in range(2)] for i in range(2)])
     ov = np.trace(V.conj().T @ U)
     if abs(ov) < 1e-12:

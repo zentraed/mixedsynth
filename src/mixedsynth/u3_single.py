@@ -50,6 +50,7 @@ the norm-equation solver in the harvest uses it).
 
 import itertools
 import time
+from functools import lru_cache
 
 import numpy as np
 import mpmath as mp
@@ -107,6 +108,17 @@ def _u3_target_mp(angles, dps):
         return r[2] * H * r[1] * H * r[0]
 
 
+@lru_cache(maxsize=1 << 14)
+def _piece_matrices(seq, dps):
+    """
+    (U_mp, U_np) of a candidate string at dps, cached: enumerate_u3_splits is
+    called once per budget with the same harvest, so the same strings recur.
+    The matrices are shared between callers and must not be modified.
+    """
+    Um = sequence_to_matrix(seq, dps=dps)
+    return Um, _mp_to_np(Um)
+
+
 def _pieces(candidates, t_max, dps):
     """
     Per channel, the candidates with T ≤ t_max as (t, seq, U_mp, U_np), with
@@ -118,10 +130,22 @@ def _pieces(candidates, t_max, dps):
         for t, s, _U in ch:
             if t <= t_max and s not in seen:
                 seen.add(s)
-                Um = sequence_to_matrix(s, dps=dps)
-                lst.append((t, s, Um, _mp_to_np(Um)))
+                lst.append((t, s) + _piece_matrices(s, dps))
         out.append(lst)
     return out
+
+
+@lru_cache(maxsize=1 << 14)
+def _left_product(seq3, seq2, dps):
+    """
+    U3·H·U2·H in mpmath for candidate strings seq3, seq2, evaluated left to
+    right exactly as in ``_Scorer.score`` (so the composite U3·H·U2·H·U1 is
+    the same to the last bit); cached because the same (Rz3, Rz2) pair recurs
+    over Rz1 choices and budgets. Shared result: do not modify.
+    """
+    with mp.workdps(dps + 10):
+        H = mp.matrix([[1, 1], [1, -1]]) / mp.sqrt(2)
+        return _piece_matrices(seq3, dps)[0] * H * _piece_matrices(seq2, dps)[0] * H
 
 
 class _Scorer:
@@ -139,7 +163,7 @@ class _Scorer:
     def score(self, picks):
         """picks = (p1, p2, p3) pieces; returns (key, err_mp, U_mp, picks)."""
         with mp.workdps(self.dps + 10):
-            U = picks[2][2] * self.H * picks[1][2] * self.H * picks[0][2]
+            U = _left_product(picks[2][1], picks[1][1], self.dps) * picks[0][2]
             V = self.V
             tr = sum(V[i, j].conjugate() * U[i, j]
                      for i in range(2) for j in range(2))

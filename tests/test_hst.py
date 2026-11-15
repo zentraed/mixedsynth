@@ -324,3 +324,101 @@ def test_compact_form_of_gridsynth(theta, digits, seq):
 def test_is_compact_form_rejects_gridsynth_layout():
     assert not hst.is_compact_form("SHHSSH")      # gridsynth layout of HSHS
     assert hst.is_compact_form(hst.compact_form("SHHSSH"))
+
+
+# ---------------------------------------------------------------------------
+# Fast paths: rewriting normal form, blocked and per-factor ring products
+# ---------------------------------------------------------------------------
+
+def _ring_letter_by_letter(seq):
+    """Reference exact matrix: one gate at a time, reduced at the end."""
+    m = hst.MAT_D_OMEGA.I()
+    for c in seq:
+        m = m @ hst._GATE[c]
+    return hst._canonical(m)
+
+
+def _key(m):
+    return (m.k,) + tuple((e.a1, e.a2, e.a3, e.a4) for e in m.elements())
+
+
+def test_hst_to_ring_blocked_matches_letter_by_letter():
+    rng = random.Random(10)
+    words = ["", "H", "T", "W", "HH", "TTTTTTTT"] + [
+        _random_word(rng, rng.randrange(0, 90)) for _ in range(200)]
+    for s in words:
+        assert _key(hst.hst_to_ring(s)) == _key(_ring_letter_by_letter(s)), s
+
+
+def test_hst_product_to_ring():
+    rng = random.Random(11)
+    for _ in range(200):
+        parts = [_random_word(rng, rng.randrange(0, 25)) for _ in range(rng.randrange(1, 6))]
+        assert _key(hst.hst_product_to_ring(*parts)) == _key(hst.hst_to_ring("".join(parts)))
+    assert _key(hst.hst_product_to_ring()) == _key(hst.hst_to_ring(""))
+
+
+def test_normal_form_rewriting_matches_decompose_all_short_words():
+    # every word of length <= 5 over H, S, T, W
+    for n in range(6):
+        for w in map("".join, itertools.product("HSTW", repeat=n)):
+            assert hst.normal_form(w) == hst._normal_form_by_decompose(w), w
+
+
+def test_normal_form_rewriting_matches_decompose_random_words():
+    rng = random.Random(12)
+    for _ in range(400):
+        s = _random_word(rng, rng.randrange(0, 90))
+        if rng.random() < 0.3:
+            s = _pad_identities(rng, s, 3)
+        nf = hst.normal_form(s)
+        assert nf == hst._normal_form_by_decompose(s)
+        assert hst.normal_form(hst.hst_to_ring(s)) == nf
+
+
+def test_normal_form_rewriting_on_tool_output():
+    for seq in TRASYN:
+        s = hst.from_trasyn(seq)
+        assert hst.normal_form(s) == hst._normal_form_by_decompose(s)
+    for _theta, _digits, seq in GRIDSYNTH:
+        s = hst.from_gridsynth(seq)
+        assert hst.normal_form(s) == hst._normal_form_by_decompose(s) == s
+
+
+def test_normal_form_product():
+    rng = random.Random(13)
+    for _ in range(300):
+        parts = [_random_word(rng, rng.randrange(0, 25)) for _ in range(rng.randrange(1, 6))]
+        joined = "".join(parts)
+        assert hst.normal_form_product(*parts) == hst.normal_form(joined)
+        assert hst.compact_form_product(*parts) == hst.compact_form(joined)
+        # factors already in normal form
+        nfs = [hst.normal_form(p) for p in parts]
+        assert hst.normal_form_product(*nfs) == hst.normal_form(joined)
+    assert hst.normal_form_product() == ""
+    with pytest.raises(ValueError):
+        hst.normal_form_product("HT", "X")
+
+
+def test_compact_tails_cover_all_cliffords():
+    tails = hst._compact_tails()
+    assert len(tails) == 192
+    for tail, comp in tails.items():
+        assert hst.hst_equal(tail, comp) and len(comp.rstrip("W")) <= 6
+
+
+def test_align_phase_product_matches_align_phase():
+    rng = random.Random(14)
+    for _ in range(100):
+        parts = [_random_word(rng, rng.randrange(0, 25)) for _ in range(rng.randrange(1, 6))]
+        th, ph, la = (rng.uniform(-math.pi, math.pi) for _ in range(3))
+        c, s_ = math.cos(th / 2), math.sin(th / 2)
+        U = np.array([[c, -np.exp(1j * la) * s_],
+                      [np.exp(1j * ph) * s_, np.exp(1j * (ph + la)) * c]])
+        try:
+            want = hst.align_phase("".join(parts), U)
+        except ValueError:
+            with pytest.raises(ValueError):
+                hst.align_phase_product(parts, U)
+            continue
+        assert hst.align_phase_product(parts, U) == want   # residual bit for bit

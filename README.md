@@ -109,7 +109,7 @@ To leading order, a single sequence's error is linear in |v|. A mixture with M�
 3. **mpmath refinement.** The weights on the ≤ 4 support members are re-solved at 60 digits, so M₁ cancels to working precision (|M₁| ≈ 1e-67 at T = 150) rather than to float64 precision.
 4. **Dominance guard.** The result is never worse than the best single sequence.
 
-The dn/2 proxy is checked against the exact Choi-matrix diamond norm (`diamond.py`). In the benchmark below the ratio is 1.000 for T_total ≥ 20, 0.997 at T_total = 10 and 0.99 at T_total = 5. The proxy is a leading-order expansion, so it is loose only when errors are large (ratio ≈ 0.75 at T_total = 1).
+The dn/2 proxy is checked against the exact Choi-matrix diamond norm (`diamond.py`). In the benchmark below the median ratio is 1.000 for T_total ≥ 20, 0.998 at T_total = 10 and 0.99 at T_total = 5. The proxy is a leading-order expansion, so it is loose only when errors are large (ratios down to 0.76 at T_total = 1).
 
 `optimize_u3(…, t_total=…)` is an alternative mode that splits the budget equally (T_total/3 per Rz) and optimizes each Rz channel independently.
 
@@ -167,16 +167,16 @@ C-U3(1.1, 2.3, 0.4), seed 0:
 
 | T_total | best single dn/2 | mixed dn/2 | median gain | E[T] | n_nz | opt time |
 |---:|---:|---:|---:|---:|:-:|---:|
-| 10 | 4.4e-2 | 4.0e-3 | 11× | 8.2 | 4 | 0.2 s |
-| 25 | 7.1e-3 | 1.2e-4 | 54× | 21.8 | 4 | 1.8 s |
-| 50 | 1.2e-3 | 4.0e-6 | 295× | 47.8 | 4 | 15 s |
-| 100 | 4.9e-5 | 5.7e-9 | 9.7 × 10³ | 97.0 | 4 | 24 s |
-| 150 | 1.5e-6 | 5.2e-12 | 2.9 × 10⁵ | 145.6 | 4 | 30 s |
-| 200 | 3.6e-8 | 2.6e-15 | 1.4 × 10⁷ | 195.9 | 4 | 53 s |
+| 10 | 4.3e-2 | 3.7e-3 | 12× | 8.4 | 4 | 0.15 s |
+| 25 | 7.1e-3 | 1.4e-4 | 45× | 20.9 | 4 | 0.5 s |
+| 50 | 1.0e-3 | 3.0e-6 | 334× | 47.0 | 4 | 1.9 s |
+| 100 | 4.6e-5 | 5.0e-9 | 9.4 × 10³ | 97.5 | 4 | 3.7 s |
+| 150 | 1.6e-6 | 5.4e-12 | 3.6 × 10⁵ | 146.6 | 4 | 6.3 s |
+| 200 | 3.3e-8 | 2.2e-15 | 1.4 × 10⁷ | 196.4 | 4 | 10.7 s |
 
 Values are medians over the 10 gates. In every case with T_total ≥ 5, the mixture sits at the incoherent floor (|M₁| ≈ 0).
 
-These numbers use the default odd-T harvest. Compared with the even-only harvest (`odd_t=False`), the mixed dn/2 is 1.2 to 6 times lower (1.5× at T_total = 10, about 4× at 25 to 50, 5 to 6× at 100 to 200), and the best single sequence is 1.1 to 2.4 times better. The cost is time: each Rz channel has about twice as many candidates, so building the composite pool takes about 4 to 6 times longer at T_total ≥ 35 (5.0 s → 24 s at T_total = 100).
+These numbers use the default odd-T harvest. Compared with the even-only harvest (`odd_t=False`, previous benchmark run), the mixed dn/2 is about 1.2 to 7 times lower (1.6× at T_total = 10, 2.5 to 5× at 25 to 50, 6 to 7× at 100 to 200), and the best single sequence is 1.2 to 2.8 times better. Each Rz channel has about twice as many candidates, but the composite pool is preselected in vectorized blocks, so optimization takes about as long as the even-only harvest did with the old scalar loop (3.7 s against 5.0 s at T_total = 100, 10.7 s against 8.9 s at 200).
 
 ### Against Trasyn at equal T
 
@@ -196,12 +196,12 @@ The largest T-count in each mixture never exceeds Trasyn's T, and the expected T
 ### Reproducing
 
 ```bash
-python benchmarks/benchmark.py              # hard-cap gain table, plus a 10-seed robustness sweep
+python benchmarks/benchmark.py --jobs 4     # hard-cap gain table, plus a 10-seed robustness sweep (~10 min on 4 cores)
 python benchmarks/benchmark_vs_trasyn.py    # vs Trasyn, reads the cache (~1 min)
 python benchmarks/harvest_trasyn.py         # optional: rebuild the cache (needs trasyn)
 ```
 
-The norm-equation solver uses Python's `random`. Seed it (`random.seed(...)`) for bit-identical runs; unseeded runs differ slightly in which candidates are found.
+The norm-equation solver uses Python's `random`. Seed it (`random.seed(...)`) for bit-identical runs; unseeded runs differ slightly in which candidates are found. `benchmark.py` seeds every (seed, T_total, gate) run on its own, so its results are reproducible and the same for any `--jobs`; `t_sw` and `t_opt` are per-run times measured inside the worker processes.
 
 ---
 

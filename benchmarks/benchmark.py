@@ -33,11 +33,15 @@ is a direct call: channel_metrics_mp(U_list[support], w_list, target_u3, dps).
 For a unitary target on a qubit, Choi trace distance equals diamond norm / 2.
 
 Run with:
-    conda run -n gridsynth python benchmarks/benchmark.py
+    python benchmarks/benchmark.py [--jobs N]
+
+Every run is seeded on its own (random.seed per seed/T_total/gate), so the
+results are reproducible and do not depend on --jobs or run order.
 """
 
 import sys
 import os
+import random
 import time as _time
 
 import numpy as np
@@ -160,18 +164,94 @@ def _matched_cost_eps(result):
 # Main benchmark
 # ---------------------------------------------------------------------------
 
-def run_benchmark(seed=SEED, t_budgets=T_BUDGETS, n_gates=N_GATES,
-                  n_keep=N_KEEP, n_keep_total=N_KEEP_TOTAL, dps=DPS,
-                  verbose=True):
-    """
-    Run the hard-constraint benchmark for one seed.
-    Returns nested dict results[t_budget][gate_idx].
-    """
+def _gates(seed, n_gates):
+    """The benchmark's random U3 targets for one seed."""
     rng = np.random.default_rng(seed)
-    gates = [
+    return [
         (rng.uniform(0, np.pi), rng.uniform(0, 2 * np.pi), rng.uniform(0, 2 * np.pi))
         for _ in range(n_gates)
     ]
+
+
+def _task_seed(seed, t_total, gate_idx):
+    """
+    The `random` seed for one (seed, T_total, gate) run.  The norm-equation
+    solver draws from `random`; seeding every run on its own makes results
+    reproducible and independent of run order and of --jobs.
+    """
+    return "mixedsynth-benchmark-%d-%d-%d" % (seed, t_total, gate_idx)
+
+
+def _run_task(task):
+    """
+    One optimize_u3_hardcap run, reduced to the numbers the report prints
+    (the full result holds mpmath matrices, which are slow to pickle).
+    """
+    seed, t_total, i, (theta, phi, lam), n_keep, n_keep_total, dps, cross = task
+    random.seed(_task_seed(seed, t_total, i))
+    stride = max(1, t_total // N_SWEEP_LEVELS)
+    result = optimize_u3_hardcap(
+        theta, phi, lam, t_total=t_total,
+        n_keep=n_keep, n_keep_total=n_keep_total,
+        stride=stride, dps=dps,
+        enclosed_tol_ratio=0.1, t_min=T_MIN_RZ,
+    )
+    if result is None:
+        return (seed, t_total, i), None
+
+    p_arr   = np.array(result["p"])
+    t_arr   = np.array(result["t_counts"])
+    support = p_arr > 1e-4
+    eps_m   = _matched_cost_eps(result)
+    out = {k: result[k] for k in ("n_mem", "n_nz", "dn2", "m1", "hull_dist", "floor2",
+                                  "eps", "t_eps", "gain", "headroom", "E_T",
+                                  "enclosed", "t_sweep", "t_opt")}
+    out.update(
+        eps_m=eps_m,
+        gain_m=(eps_m / result["dn2"]) if result["dn2"] > 0 else float("inf"),
+        n_low_t=int(np.sum((t_arr <= 1) & support)),
+        n_support=int(support.sum()),
+        dn2_cross=_choi_cross_check(theta, phi, lam, result, dps=dps) if cross else None,
+    )
+    return (seed, t_total, i), out
+
+
+def _run_tasks(tasks, jobs):
+    """Run tasks (in a pool of `jobs` processes when jobs > 1); dict by key."""
+    if jobs <= 1:
+        return dict(_run_task(t) for t in tasks)
+    from concurrent.futures import ProcessPoolExecutor
+    # Largest budgets first, so the long runs do not end up last.
+    ordered = sorted(tasks, key=lambda t: -t[1])
+    with ProcessPoolExecutor(max_workers=jobs) as ex:
+        return dict(ex.map(_run_task, ordered, chunksize=1))
+
+
+def _main_tasks(seed=SEED, t_budgets=T_BUDGETS, n_gates=N_GATES,
+                n_keep=N_KEEP, n_keep_total=N_KEEP_TOTAL, dps=DPS):
+    gates = _gates(seed, n_gates)
+    return [(seed, t, i, g, n_keep, n_keep_total, dps, i in SDP_GATE_IDX)
+            for t in t_budgets for i, g in enumerate(gates)]
+
+
+def _sweep_tasks(seeds, t_budgets, n_gates=N_GATES,
+                 n_keep=N_KEEP, n_keep_total=N_KEEP_TOTAL, dps=DPS):
+    return [(seed, t, i, g, n_keep, n_keep_total, dps, False)
+            for t in t_budgets for seed in seeds
+            for i, g in enumerate(_gates(seed, n_gates))]
+
+
+def run_benchmark(seed=SEED, t_budgets=T_BUDGETS, n_gates=N_GATES,
+                  n_keep=N_KEEP, n_keep_total=N_KEEP_TOTAL, dps=DPS,
+                  verbose=True, results=None, jobs=1):
+    """
+    Run (or, with ``results`` from _run_tasks, just report) the
+    hard-constraint benchmark for one seed.
+    Returns nested dict results[t_budget][gate_idx] of report summaries.
+    """
+    if results is None:
+        results = _run_tasks(_main_tasks(seed, t_budgets, n_gates, n_keep,
+                                         n_keep_total, dps), jobs)
 
     if verbose:
         print("MixedSynth Hard-Constraint Benchmark (T_1+T_2+T_3 ≤ T_total)")
@@ -218,60 +298,28 @@ def run_benchmark(seed=SEED, t_budgets=T_BUDGETS, n_gates=N_GATES,
             print("  " + "-" * (len(hdr) - 2))
 
         budget_results = {}
-        for i, (theta, phi, lam) in enumerate(gates):
-            result = optimize_u3_hardcap(
-                theta, phi, lam, t_total=t_total,
-                n_keep=n_keep, n_keep_total=n_keep_total,
-                stride=stride, dps=dps,
-                enclosed_tol_ratio=0.1, t_min=T_MIN_RZ,
-            )
-            budget_results[i] = result
-            if result is None:
+        for i in range(n_gates):
+            r = results[(seed, t_total, i)]
+            budget_results[i] = r
+            if r is None:
                 if verbose:
                     print("  %4d  (no channel)" % i)
                 continue
 
-            eps_m  = _matched_cost_eps(result)
-            gain_m = (eps_m / result["dn2"]) if result["dn2"] > 0 else float("inf")
-
-            # T=0/T=1 diagnostic: count active support members with T ≤ 1
-            p_arr   = np.array(result["p"])
-            t_arr   = np.array(result["t_counts"])
-            support = p_arr > 1e-4
-            n_low_t = int(np.sum((t_arr <= 1) & support))
-            low_t_tag = ("  [T≤1 in support: %d/%d]" % (n_low_t, int(support.sum()))
-                         if n_low_t > 0 else "")
-
+            low_t_tag = ("  [T≤1 in support: %d/%d]" % (r["n_low_t"], r["n_support"])
+                         if r["n_low_t"] > 0 else "")
             cross_tag = ""
-            if SDP_GATE_IDX and i in SDP_GATE_IDX:
-                dn2_cross = _choi_cross_check(theta, phi, lam, result, dps=dps)
-                if dn2_cross is not None:
-                    ratio = dn2_cross / result["dn2"] if result["dn2"] > 0 else float("inf")
-                    cross_tag = "  [cross: dn2=%.2e  ratio=%.3f]" % (dn2_cross, ratio)
+            if r["dn2_cross"] is not None:
+                ratio = r["dn2_cross"] / r["dn2"] if r["dn2"] > 0 else float("inf")
+                cross_tag = "  [cross: dn2=%.2e  ratio=%.3f]" % (r["dn2_cross"], ratio)
 
             if verbose:
                 print(
                     "  %4d  %5d  %4d  %9.2e  %9.2e  %9.2e  %9.2e  %9.2e  %5d  %9.2e  %9.2e  %9.2e  %6.2f  %6.1f  %5.1f  %5.2f%s%s"
-                    % (
-                        i,
-                        result["n_mem"],
-                        result["n_nz"],
-                        result["dn2"],
-                        result["m1"],
-                        result["hull_dist"],
-                        result["floor2"],
-                        result["eps"],
-                        result["t_eps"],
-                        eps_m,
-                        result["gain"],
-                        gain_m,
-                        result["headroom"],
-                        result["E_T"],
-                        result["t_sweep"],
-                        result["t_opt"],
-                        low_t_tag,
-                        cross_tag,
-                    )
+                    % (i, r["n_mem"], r["n_nz"], r["dn2"], r["m1"], r["hull_dist"],
+                       r["floor2"], r["eps"], r["t_eps"], r["eps_m"], r["gain"],
+                       r["gain_m"], r["headroom"], r["E_T"], r["t_sweep"], r["t_opt"],
+                       low_t_tag, cross_tag)
                 )
 
         all_results[t_total] = budget_results
@@ -286,10 +334,14 @@ def run_benchmark(seed=SEED, t_budgets=T_BUDGETS, n_gates=N_GATES,
 # ---------------------------------------------------------------------------
 
 def run_robustness_sweep(seeds, t_budgets=T_BUDGETS, n_gates=N_GATES,
-                         n_keep=N_KEEP, n_keep_total=N_KEEP_TOTAL, dps=DPS):
+                         n_keep=N_KEEP, n_keep_total=N_KEEP_TOTAL, dps=DPS,
+                         results=None, jobs=1):
     """
     Run the benchmark across multiple seeds and report per-budget statistics.
     """
+    if results is None:
+        results = _run_tasks(_sweep_tasks(seeds, t_budgets, n_gates, n_keep,
+                                          n_keep_total, dps), jobs)
     print("Robustness sweep: seeds=%s  budgets=%s" % (seeds, t_budgets))
     print()
 
@@ -302,10 +354,8 @@ def run_robustness_sweep(seeds, t_budgets=T_BUDGETS, n_gates=N_GATES,
         total = 0
 
         for seed in seeds:
-            results = run_benchmark(seed=seed, t_budgets=[t_total],
-                                    n_keep=n_keep, n_keep_total=n_keep_total,
-                                    dps=dps, verbose=False)
-            for gate_idx, result in results.get(t_total, {}).items():
+            for gate_idx in range(n_gates):
+                result = results[(seed, t_total, gate_idx)]
                 if result is None:
                     continue
                 total += 1
@@ -317,9 +367,7 @@ def run_robustness_sweep(seeds, t_budgets=T_BUDGETS, n_gates=N_GATES,
                 if result["n_nz"] < 4:
                     n_low_support += 1
                 # Count gates where any T≤1 composite carries weight
-                p_arr = np.array(result["p"])
-                t_arr = np.array(result["t_counts"])
-                if np.any((t_arr <= 1) & (p_arr > 1e-4)):
+                if result["n_low_t"] > 0:
                     n_low_t_support += 1
 
         if not gains:
@@ -348,10 +396,25 @@ def run_robustness_sweep(seeds, t_budgets=T_BUDGETS, n_gates=N_GATES,
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    sys.stdout = _Tee(os.path.normpath(RESULTS_FILE), sys.__stdout__)
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    ap.add_argument("--jobs", type=int, default=1,
+                    help="worker processes (each run is independent and seeded on its "
+                         "own, so results do not depend on this; t_sw/t_opt are "
+                         "per-run times measured inside the workers)")
+    args = ap.parse_args()
+
     t0_total = _time.time()
-    run_benchmark()
+    tasks = _main_tasks()
+    if ROBUSTNESS_SEEDS:
+        tasks += _sweep_tasks(ROBUSTNESS_SEEDS, ROBUSTNESS_BUDGETS)
+    results = _run_tasks(tasks, args.jobs)
+
+    sys.stdout = _Tee(os.path.normpath(RESULTS_FILE), sys.__stdout__)
+    print("jobs=%d (each run seeded on its own; results do not depend on jobs)" % args.jobs)
+    print()
+    run_benchmark(results=results)
     if ROBUSTNESS_SEEDS:
         print("=" * 60)
-        run_robustness_sweep(ROBUSTNESS_SEEDS, t_budgets=ROBUSTNESS_BUDGETS)
+        run_robustness_sweep(ROBUSTNESS_SEEDS, t_budgets=ROBUSTNESS_BUDGETS, results=results)
     print("Total time: %.1f s" % (_time.time() - t0_total))

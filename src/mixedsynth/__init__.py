@@ -26,6 +26,13 @@ Single-sequence synthesis
   - enumerate_u3_splits: per split t_1+t_2+t_3 == T_total, the best (or
     every) such sequence; splits with no harvested candidate are reported.
 
+Controlled gates
+  - C-V for V = e^{iγ}U3(θ,φ,λ) as P(α) on the control and C·CX·B·CX·A on
+    the target (ABC = I), so every piece acts unconditionally and its global
+    phase stays global.  synthesize_controlled_u3_single gives one circuit;
+    optimize_controlled_u3 makes each piece an optimize_u3_hardcap mixture
+    under a hard per-shot T cap, sampled with sample_controlled.
+
 Sequences
   - hst: one H/S/T/W alphabet for every tool (from_gridsynth, from_pyliqtr,
     from_trasyn), exact matrices, the Matsumoto–Amano normal form in
@@ -43,6 +50,11 @@ from .moments import compute_moments_mp, dn2_moment_mp
 from .harvest import harvest_rz, rz_angles_for_u3, rz_exact_mp
 from .u3 import optimize_u3, optimize_u3_hardcap
 from .u3_single import synthesize_u3_single, enumerate_u3_splits, harvest_u3
+from .controlled import (
+    u3_params, controlled_u3_matrix, controlled_u3_pieces, split_budget,
+    circuit_matrix, circuit_t_count, synthesize_controlled_u3_single,
+    optimize_controlled_u3, sample_controlled,
+)
 from .genlist import approximate_rz_direct_set
 from . import hst
 from .sequences import (

@@ -113,6 +113,50 @@ The dn/2 proxy is checked against the exact Choi-matrix diamond norm (`diamond.p
 
 `optimize_u3(…, t_total=…)` is an alternative mode that splits the budget equally (T_total/3 per Rz) and optimizes each Rz channel independently.
 
+## Controlled gates
+
+**Don't control the members.** Every sequence mixedsynth returns is correct only up to a global phase, and the optimizer works in SU(2). Under a control, that global phase becomes a *relative* phase. A mixture of controlled members is therefore far from C-V: in tests the error was 0.2 to 0.9, whatever the T budget.
+
+**Decomposition.** mixedsynth builds C-V, for V = e^{iγ}·U3(θ, φ, λ), only from gates that act unconditionally (Nielsen & Chuang, Cor. 4.2):
+
+```
+target :  C ── ⊕ ── B ── ⊕ ── A          ABC = I,  A·X·B·X·C = W
+control:  ──── ● ─────── ● ──── P        V = e^{iα}W,  P = diag(1, e^{iα})
+```
+
+A, B, C and P are ordinary U3 gates. A phase on A, B or C multiplies both control branches by the same factor, and P acts on the control unconditionally, so each piece can be any approximation that is correct up to phase. In particular each piece can be an `optimize_u3_hardcap` mixture, drawn independently on every shot. Each piece's sequence is rewritten to its normal form, which drops the redundant H·H and trivial rotations left by the U3 template.
+
+```python
+import random
+from mixedsynth import (optimize_controlled_u3, synthesize_controlled_u3_single,
+                        sample_controlled, u3_params)
+
+random.seed(0)
+s = synthesize_controlled_u3_single(1.1, 2.3, 0.4, t_total=48)   # one fixed circuit
+r = optimize_controlled_u3(1.1, 2.3, 0.4, t_total=48)            # mixed channel
+s["dn2"]                              # exact dn/2 of the single circuit
+r["dn2_upper"], r["dn2_lower"]        # rigorous bounds on the channel's dn/2
+r["pieces"]["A"]["members"]           # the A mixture: [{"weight", "t_count", "sequence"}, ...]
+
+shot = sample_controlled(r)           # fresh circuit for each shot, in application order:
+# [("u", 1, C), ("cx", 0, 1), ("u", 1, B), ("cx", 0, 1), ("u", 1, A), ("u", 0, P)]
+```
+
+- **Targets.** `gamma` sets V's global phase, which is physical for C-V. For an arbitrary 2×2 unitary, `u3_params(V)` gives `(θ, φ, λ, γ)`.
+- **Circuits.** Qubit 0 is the control and qubit 1 the target. `circuit_matrix(ops)` gives the 4×4 unitary, with kron(q0, q1) ordering.
+- **T budget.** `t_total` is a hard per-shot cap. By default it is split over A, B, C and P in proportion to their non-trivial rotations, which is 2 : 2 : 1 : 1 for a generic gate. Pass `t_split` to set the split yourself.
+- **Error bounds.** `dn2_upper` is the sum of each piece's exact qubit certificate (subadditivity). `dn2_lower` is the Choi trace distance of the full two-qubit channel. In practice the two agree to within a few percent.
+
+C-U3(1.1, 2.3, 0.4), seed 0:
+
+| T_total | split A/B/C/P | single circuit dn/2 | mixed dn/2 (upper bound) | gain | E[T] |
+|---:|:-:|---:|---:|---:|---:|
+| 24 | 8/8/4/4 | 2.6e-1 | 5.9e-2 | 4× | 16.1 |
+| 48 | 16/16/8/8 | 1.8e-1 | 1.9e-2 | 10× | 35.6 |
+| 72 | 24/24/12/12 | 5.9e-2 | 3.1e-3 | 19× | 59.2 |
+
+**Cost and exactness.** A generic C-V needs six non-Clifford rotations, roughly twice a bare U3. C-H, C-S, C-X and other gates whose pieces are Clifford+T come out exact. C-T does not: diag(1, 1, 1, ω) has determinant ω, which no two-qubit Clifford+T circuit without an ancilla can produce, so it is approximated like any other gate.
+
 ---
 
 ## Results
@@ -169,6 +213,7 @@ src/mixedsynth/
   genlist.py      ensemble generation over the ring D[ω]; fixed-ε sets; Choi metrics
   sequences.py    gate-string helpers: tokenize / to-matrix / sample
   u3.py           U3 channel synthesis (hard-cap and equal-split modes)
+  controlled.py   controlled-U3: single circuit and mixed channel from unconditional pieces
   generators.py   rotation vectors v ∈ ℝ³ from SU(2) residuals
   optimize.py     Frank–Wolfe min-norm point + LP on the M₁=0 face
   moments.py      high-precision first/second moments and the dn/2 proxy

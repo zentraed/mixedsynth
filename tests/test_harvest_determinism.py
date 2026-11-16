@@ -25,7 +25,7 @@ SEED = 1234
 TARGET = (1.1, 2.3, 0.4)
 T_BUDGET = 4
 
-# harvest_u3(1.1, 2.3, 0.4, 4) after random.seed(1234), as (t_count, seq).
+# harvest_u3(1.1, 2.3, 0.4, 4, odd_t=False) after random.seed(1234), as (t_count, seq).
 # Ties in fidelity: channel 3 T=1 has four distinct gates at fidelity
 # 0.4996...; HT, SSHSHT, HSHSST are the first three in Clifford order.
 PINNED = [
@@ -51,7 +51,7 @@ PINNED = [
 
 def _harvest():
     random.seed(SEED)
-    return harvest_u3(*TARGET, T_BUDGET)
+    return harvest_u3(*TARGET, T_BUDGET, odd_t=False)   # pinned even-only harvest
 
 
 def test_harvest_sequences_pinned():

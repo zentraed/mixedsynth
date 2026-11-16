@@ -200,10 +200,12 @@ def test_enumerate_t2_has_no_missing():
     assert not r["missing"] and len(r["entries"]) == 6
 
 
-def test_odd_t_above_one_is_never_harvested(harvests):
-    """The gridsynth sweep yields even T ≥ 2 only (plus explicit T=0, T=1)."""
-    for cands in harvests.values():
-        for ch in cands:
+def test_odd_t_above_one_is_never_harvested():
+    """With odd_t=False the gridsynth sweep yields even T ≥ 2 only (plus
+    explicit T=0, T=1)."""
+    for tg in TARGETS:
+        random.seed(SEED)
+        for ch in harvest_u3(*tg, 10, odd_t=False):
             assert not any(t >= 3 and t % 2 for t, _s, _U in ch)
 
 

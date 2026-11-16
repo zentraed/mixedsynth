@@ -24,7 +24,8 @@ BUDGETS = (6, 10)
 
 def _run(t_total):
     random.seed(SEED)
-    return optimize_u3_hardcap(*TARGET, t_total=t_total)
+    # odd_t=False: the baseline below was recorded with the even-only harvest
+    return optimize_u3_hardcap(*TARGET, t_total=t_total, odd_t=False)
 
 
 @pytest.fixture(scope="module", params=BUDGETS)

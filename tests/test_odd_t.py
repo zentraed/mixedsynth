@@ -60,13 +60,15 @@ def _is_odd_level(t):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("angle", ANGLES[:4])
-def test_odd_t_false_is_default(angle):
-    a = [(t, s) for t, s, _ in _harvest(angle, 10, odd_t=False)]
+def test_odd_t_true_is_default(angle):
+    a = [(t, s) for t, s, _ in _harvest(angle, 10, odd_t=True)]
     random.seed(1234)
     b = [(t, s) for t, s, _ in harvest_rz(angle, t_budget=10, dps=DPS,
                                           with_sequences=True)]
     assert a == b
-    assert not any(_is_odd_level(t) for t, _ in a)
+    assert any(_is_odd_level(t) for t, _ in a)
+    off = [t for t, _s, _U in _harvest(angle, 10, odd_t=False)]
+    assert not any(_is_odd_level(t) for t in off)
 
 
 @pytest.mark.parametrize("angle", ANGLES)
@@ -95,7 +97,7 @@ def test_harvest_u3_even_subset_and_later_channels_unchanged():
     """Channels are harvested in sequence from one global random stream; the
     odd levels of rz1 must not perturb rz2/rz3's even candidates."""
     random.seed(1234)
-    off = harvest_u3(1.1, 2.3, 0.4, 8, dps=DPS)
+    off = harvest_u3(1.1, 2.3, 0.4, 8, dps=DPS, odd_t=False)
     random.seed(1234)
     on = harvest_u3(1.1, 2.3, 0.4, 8, dps=DPS, odd_t=True)
     for ch_off, ch_on in zip(off, on):
@@ -202,7 +204,7 @@ U3_TARGETS = [(1.1, 2.3, 0.4), (6.16277, 4.30739, 4.08696),
 @pytest.mark.parametrize("target", U3_TARGETS)
 def test_enumerate_splits_no_missing(target):
     random.seed(11)
-    off = enumerate_u3_splits(*target, 10, dps=DPS)
+    off = enumerate_u3_splits(*target, 10, dps=DPS, odd_t=False)
     random.seed(11)
     on = enumerate_u3_splits(*target, 10, dps=DPS, odd_t=True)
     assert off["n_splits"] == on["n_splits"] == 66
@@ -218,7 +220,7 @@ def test_enumerate_splits_no_missing(target):
 def test_synthesize_single_odd_t_not_worse():
     for target in U3_TARGETS[:2]:
         random.seed(5)
-        off = synthesize_u3_single(*target, 7, dps=DPS)
+        off = synthesize_u3_single(*target, 7, dps=DPS, odd_t=False)
         random.seed(5)
         on = synthesize_u3_single(*target, 7, dps=DPS, odd_t=True)
         assert on["err"] <= off["err"] + 1e-12

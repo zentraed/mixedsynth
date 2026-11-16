@@ -11,13 +11,13 @@ mixedsynth has two parts:
 
 ```
 U3(1.1, 2.3, 0.4) with T ≤ 30 per shot
-  best single sequence : dn/2 = 1.925e-02
-  mixed channel        : dn/2 = 5.937e-04  (gain 32.4x, E[T] = 28.1)
+  best single sequence : dn/2 = 3.735e-03
+  mixed channel        : dn/2 = 5.518e-05  (gain 67.7x, E[T] = 25.7)
   members:
-    p=0.4023  T=29  SSTHSHTHTHTHTHTSHTHTSHTSHTHTHTHTSHTSHTHSHTHTSHTHTSHTSHTSHTHTSHTHTSHTSHTSHTHTSHZ
-    p=0.3063  T=30  HTHTSHTHTSHTHTSdHTSHTHTSHTSHTHTHTHTHTSHTHTSHTHTSHTHTHTSHTSHTSdHTHTSHTSHTSHTHTH
-    p=0.2233  T=24  SHTSHTSHTSHTHTHTZHHTSHTHTSHTSHTSHTSHTSHTSdHHTHTHTSHTHTSHTSHTSHTHTSHTXS
-    p=0.0681  T=28  HTHTSHTHTSHTHTSdHTSHTHTHTHTHTSHTHTHTSHTHTSHTSHTSHTHTHTYHTHTSHTSHTSHTHTH
+    p=0.7575  T=25  THTHTHTHTHTSHTSHTSHTHTHTHTHTSHTSHTSdHTHSHTSHTHTHTHTSHTSHTSHTHTZHZ
+    p=0.1806  T=28  SSTHSHTSHTSHTSHTSHTSHTHTSHTSHTHTSHTSHTSdHZHTHTHTSHTHTHTSHTHTHTHTSHTHTHTSHTHTSd
+    p=0.0446  T=28  SSTHSHTHTSHTSHTHTHTSHTHTSHTHTSHTHTSHTYSHTHTSHTHTSHTSHTSHTHTSHTHTSHTSHTSHTHTSHZ
+    p=0.0172  T=27  STHTHTSHTSHTSHTSHTHTHTHTHTSHTSHTSHTHTHTSHTHSHTHSTHTSHTHTSHTHTHTSHTSHTSHTHTSHTXS
 ```
 
 ---
@@ -71,7 +71,10 @@ You can run the full example with `python examples/quickstart.py`.
 |---|---|
 | T = 0 | the nearest single-qubit Cliffords (all 24, found by BFS over ⟨H, S⟩) |
 | T = 1 | the nearest C·T circuits |
-| T ≥ 2 | a gridsynth-style search: ε is swept as ε(T) = 2^(−T/3); for each ε, up to `n_keep` lattice candidates are taken from the ellipse/grid enumeration, the norm equation is solved, and each solution is decomposed exactly into a gate string |
+| even T ≥ 2 | a gridsynth-style search: ε is swept as ε(T) = 2^(−T/3); for each ε, up to `n_keep` lattice candidates are taken from the ellipse/grid enumeration, the norm equation is solved, and each solution is decomposed exactly into a gate string |
+| odd T ≥ 3 | T·V, where V is an even-T candidate for Rz(θ − π/4) from the same search at ε(T − 1) |
+
+**Odd T-counts.** The grid solver is phase-exact (det 1), so on its own it only finds even T. Since T = e^{iπ/8}·Rz(π/4) commutes with Rz, T·V approximates Rz(θ) with exactly V's error, and its T-count is odd. This is on by default (`odd_t=True`), so every T level is available and the T-count tracks the target error one T at a time instead of in steps of two. `odd_t=False` gives the even-only harvest of earlier versions, candidate for candidate.
 
 `genlist.approximate_rz_direct_set(num, den, precision, n_cands)` returns the same kind of ensemble at a single fixed precision for Rz(num·π/den).
 
@@ -120,14 +123,16 @@ The dn/2 proxy is checked against the exact Choi-matrix diamond norm (`diamond.p
 
 | T_total | best single dn/2 | mixed dn/2 | median gain | E[T] | n_nz | opt time |
 |---:|---:|---:|---:|---:|:-:|---:|
-| 10 | 5.0e-2 | 5.8e-3 | 8× | 7.7 | 4 | 0.16 s |
-| 25 | 1.3e-2 | 4.9e-4 | 27× | 21.0 | 4 | 0.6 s |
-| 50 | 2.8e-3 | 1.6e-5 | 184× | 46.5 | 4 | 3.2 s |
-| 100 | 1.2e-4 | 3.4e-8 | 3.5 × 10³ | 97.8 | 4 | 5.0 s |
-| 150 | 3.4e-6 | 3.0e-11 | 1.2 × 10⁵ | 146.1 | 4 | 5.8 s |
-| 200 | 8.7e-8 | 1.3e-14 | 6.3 × 10⁶ | 195.0 | 4 | 8.9 s |
+| 10 | 4.4e-2 | 4.0e-3 | 11× | 8.2 | 4 | 0.2 s |
+| 25 | 7.1e-3 | 1.2e-4 | 54× | 21.8 | 4 | 1.8 s |
+| 50 | 1.2e-3 | 4.0e-6 | 295× | 47.8 | 4 | 15 s |
+| 100 | 4.9e-5 | 5.7e-9 | 9.7 × 10³ | 97.0 | 4 | 24 s |
+| 150 | 1.5e-6 | 5.2e-12 | 2.9 × 10⁵ | 145.6 | 4 | 30 s |
+| 200 | 3.6e-8 | 2.6e-15 | 1.4 × 10⁷ | 195.9 | 4 | 53 s |
 
 Values are medians over the 10 gates. In every case with T_total ≥ 5, the mixture sits at the incoherent floor (|M₁| ≈ 0).
+
+These numbers use the default odd-T harvest. Compared with the even-only harvest (`odd_t=False`), the mixed dn/2 is 1.2 to 6 times lower (1.5× at T_total = 10, about 4× at 25 to 50, 5 to 6× at 100 to 200), and the best single sequence is 1.1 to 2.4 times better. The cost is time: each Rz channel has about twice as many candidates, so building the composite pool takes about 4 to 6 times longer at T_total ≥ 35 (5.0 s → 24 s at T_total = 100).
 
 ### Against Trasyn at equal T
 
@@ -135,14 +140,14 @@ For the comparison, Trasyn (Hao et al.) was run at each target precision and its
 
 | Trasyn ε target | median Trasyn T | mixedsynth dn/2 ÷ Trasyn dn/2 (median) | gates where mixedsynth wins |
 |---:|---:|---:|:-:|
-| 0.05 | 8 | 0.28 | 10 / 10 |
-| 0.02 | 10 | 0.39 | 10 / 10 |
-| 0.01 | 14 | 0.24 | 10 / 10 |
-| 0.005 | 18 | 0.40 | 10 / 10 |
-| 0.002 | 22.5 | 0.62 | 10 / 10 |
-| 0.001 | 26 | 0.50 | 10 / 10 |
+| 0.05 | 8 | 0.22 | 10 / 10 |
+| 0.02 | 10 | 0.23 | 10 / 10 |
+| 0.01 | 14 | 0.17 | 10 / 10 |
+| 0.005 | 18 | 0.13 | 10 / 10 |
+| 0.002 | 22.5 | 0.19 | 10 / 10 |
+| 0.001 | 26 | 0.18 | 10 / 10 |
 
-The largest T-count in each mixture never exceeds Trasyn's T, and the expected T-count is lower in 59 of the 60 cases. Trasyn outputs are cached in `benchmarks/trasyn_cache.json`, so you only need Trasyn installed to regenerate that cache.
+The largest T-count in each mixture never exceeds Trasyn's T, and the expected T-count is lower in all 60 cases. With the even-only harvest the ratios were 0.24 to 0.62: Trasyn's T-counts are often odd, and only the odd-T harvest can use every T that Trasyn uses. Trasyn outputs are cached in `benchmarks/trasyn_cache.json`, so you only need Trasyn installed to regenerate that cache.
 
 ### Reproducing
 

@@ -388,7 +388,7 @@ def _shifted_angle(angle, sign):
 
 
 def harvest_rz(angle, t_min=0, t_budget=50, n_keep=5, stride=1, dps=60,
-               with_sequences=False, odd_t=False):
+               with_sequences=False, odd_t=True):
     """
     Harvest Clifford+T approximations of Rz(angle) within a T-gate budget.
 
@@ -401,9 +401,11 @@ def harvest_rz(angle, t_min=0, t_budget=50, n_keep=5, stride=1, dps=60,
     with_sequences : if True, also return the Clifford+T gate string of each
                 candidate (matrix order, tokens H S Sd X Y Z T)
 
-    odd_t     : if True, also harvest odd T-counts T ≥ 3 (see below).  The
-                default False gives exactly the candidates of earlier
-                versions.
+    odd_t     : if True (default), also harvest odd T-counts T ≥ 3 (see
+                below), so every T level is available and the T-count can
+                track the target error one T at a time.  False gives
+                exactly the candidates of versions before odd_t existed
+                (T = 0, 1 and even T ≥ 2 only).
 
     Returns list of (t_count: int, U_mp: mpmath 2×2 matrix), sorted by t_count,
     or (t_count, seq: str, U_mp) triples when with_sequences=True.
@@ -422,8 +424,8 @@ def harvest_rz(angle, t_min=0, t_budget=50, n_keep=5, stride=1, dps=60,
     added as T·V, V an even-T candidate for Rz(angle − π/4) from the same
     solver at ε(T − 1) (details in _odd_t_approx_mp).  They are computed
     after all other levels with a private seed derived from the current
-    ``random`` state, which is restored, so the odd_t=False candidates
-    appear unchanged and in the same order (the result is stably sorted by
+    ``random`` state, which is restored, so the even-level (odd_t=False)
+    candidates appear unchanged and in the same order (the result is stably sorted by
     T) and later harvests see the same global ``random`` stream.
     """
     members = []

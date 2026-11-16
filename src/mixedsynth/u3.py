@@ -105,7 +105,7 @@ def _refine_weights_mp(vs_mp_s, dps=60):
 def optimize_u3(theta, phi, lam, t_budget=None, t_total=None,
                 n_keep=5, stride=None, dps=60,
                 enclosed_tol_ratio=0.1, fw_iter=2000,
-                t_min=0):
+                t_min=0, odd_t=True):
     """
     Harvest and optimize the U3 mixed channel.
 
@@ -116,6 +116,7 @@ def optimize_u3(theta, phi, lam, t_budget=None, t_total=None,
                  error scaling).
       t_budget : T-gate budget per Rz channel directly. Use this to override
                  the equal-split allocation.
+    odd_t : also harvest odd T ≥ 3 Rz levels (default True; see harvest_rz).
 
     Returns a dict with all per-gate metrics, plus:
       t_budget_rz : the per-Rz T budget actually used
@@ -139,7 +140,7 @@ def optimize_u3(theta, phi, lam, t_budget=None, t_total=None,
     for angle in angles:
         members = harvest_rz(angle, t_min=t_min, t_budget=t_budget,
                              n_keep=n_keep, stride=stride, dps=dps,
-                             with_sequences=True)
+                             with_sequences=True, odd_t=odd_t)
         channels.append([(t, U) for t, _s, U in members])
         channel_seqs.append([sq for _t, sq, _U in members])
     t_sweep = time.time() - t0
@@ -290,7 +291,7 @@ def optimize_u3(theta, phi, lam, t_budget=None, t_total=None,
 def optimize_u3_hardcap(theta, phi, lam, t_total,
                          n_keep=5, n_keep_total=10, dps=60,
                          enclosed_tol_ratio=0.1, fw_iter=2000,
-                         t_min=0, stride=None, odd_t=False):
+                         t_min=0, stride=None, odd_t=True):
     """
     Optimize the U3 mixed channel under the hard constraint T_1+T_2+T_3 ≤ t_total.
 
@@ -311,8 +312,9 @@ def optimize_u3_hardcap(theta, phi, lam, t_total,
     t_min          : minimum T per Rz channel (0 = allow Clifford approximations)
     stride         : T-level step for harvest (default: max(1, t_total//30))
     dps            : mpmath decimal places
-    odd_t          : also harvest odd T ≥ 3 Rz levels (see harvest_rz);
-                     False (default) reproduces earlier harvests exactly
+    odd_t          : also harvest odd T ≥ 3 Rz levels (default True; see
+                     harvest_rz); False reproduces the even-only harvests of
+                     earlier versions exactly
 
     Returns
     -------

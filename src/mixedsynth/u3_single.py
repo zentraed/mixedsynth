@@ -73,7 +73,7 @@ def _mp_to_np(U_mp):
 # ---------------------------------------------------------------------------
 
 def harvest_u3(theta, phi, lam, t_budget, n_keep=5, t_min=0, stride=None,
-               dps=60, odd_t=False):
+               dps=60, odd_t=True):
     """
     Harvest Rz candidates for the three U3 angles, in the same order and with
     the same arguments as :func:`optimize_u3_hardcap` (rz1, rz2, rz3; each
@@ -81,8 +81,9 @@ def harvest_u3(theta, phi, lam, t_budget, n_keep=5, t_min=0, stride=None,
     with_sequences=True)``; stride default ``max(1, t_budget // 30)``).  With
     the same ``random`` seed it reproduces hardcap's harvest for
     ``t_total = t_budget``.  odd_t is passed to harvest_rz (odd T ≥ 3
-    levels; False reproduces earlier harvests exactly, and True leaves the
-    odd_t=False candidates unchanged, in the same order, as a subsequence).
+    levels, on by default; False reproduces the even-only harvests of
+    earlier versions exactly, and True leaves those candidates unchanged, in
+    the same order, as a subsequence).
 
     Returns a list of three lists of ``(t_count, seq, U_mp)`` triples, ordered
     rz1, rz2, rz3, each sorted by T ascending.  t_count is the actual T-count
@@ -246,7 +247,7 @@ def _float_search(sc, chans, t_total, shortlist):
 
 def synthesize_u3_single(theta, phi, lam, t_total, n_keep=5, t_min=0,
                          stride=None, dps=60, pool=False, pool_size=128,
-                         candidates=None, odd_t=False):
+                         candidates=None, odd_t=True):
     """
     Best single Clifford+T sequence Rz3·H·Rz2·H·Rz1 for U3(θ,φ,λ) with
     T1+T2+T3 ≤ t_total.
@@ -336,7 +337,7 @@ def synthesize_u3_single(theta, phi, lam, t_total, n_keep=5, t_min=0,
 
 def enumerate_u3_splits(theta, phi, lam, t_total, per_split="best",
                         piece="all", n_keep=5, t_min=0, stride=None, dps=60,
-                        candidates=None, odd_t=False):
+                        candidates=None, odd_t=True):
     """
     Composite sequences Rz3·H·Rz2·H·Rz1 for U3(θ,φ,λ) for every split
     (t1, t2, t3) of nonnegative integers with t1+t2+t3 == t_total and each
@@ -346,11 +347,12 @@ def enumerate_u3_splits(theta, phi, lam, t_total, per_split="best",
 
     Splits are visited in lexicographic order of (t1, t2, t3).  A piece with
     T-count t_k must be a harvested candidate for channel k whose actual
-    T-count is exactly t_k.  By default the gridsynth sweep only yields even
-    T ≥ 2 (plus the explicit T=0 Cliffords and T=1 C·T circuits), so splits
-    with an odd t_k ≥ 3 normally have no candidate; odd_t=True harvests odd
-    levels T ≥ 3 too (see harvest_rz).  Splits without a candidate are not
-    dropped silently but listed in "missing".
+    T-count is exactly t_k.  The gridsynth sweep only yields even T ≥ 2
+    (plus the explicit T=0 Cliffords and T=1 C·T circuits); odd_t=True (the
+    default) harvests odd levels T ≥ 3 too (see harvest_rz).  With
+    odd_t=False, splits with an odd t_k ≥ 3 normally have no candidate.
+    Splits without a candidate are not dropped silently but listed in
+    "missing".
 
     per_split : "best" — one entry per available split: the combination of
                 that split's candidates with the smallest err (ties as in the
@@ -366,7 +368,7 @@ def enumerate_u3_splits(theta, phi, lam, t_total, per_split="best",
     candidates: optional harvest_u3 output to reuse; n_keep/t_min/stride/
                 odd_t are then ignored for the harvest (t_min still
                 restricts splits).
-    odd_t     : harvest odd T ≥ 3 levels too (see harvest_u3).
+    odd_t     : harvest odd T ≥ 3 levels too (default True; see harvest_u3).
 
     Returns a dict
       entries   : list of {"sequence", "t_count" (== t_total), "t_split",

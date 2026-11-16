@@ -288,6 +288,102 @@ def optimize_u3(theta, phi, lam, t_budget=None, t_total=None,
 # Hard-constraint optimizer: T_1 + T_2 + T_3 ≤ t_total
 # ---------------------------------------------------------------------------
 
+def _preselect_pool(m_np, H_np, tH, t_total, n_preselect):
+    """
+    First-pass composite selection for optimize_u3_hardcap.
+
+    Every combination (i1, i2, i3) with t1+t2+t3 ≤ t_total, numbered by a
+    counter in nested-loop order (i1 outer, i3 inner; each channel sorted by
+    T, so a channel's admissible candidates are a prefix), gets
+    fe = |tr(V† · U3·H·(U2·(H·U1)))|²/4.  Per total-T level the result is
+    the min-heap a streaming pass would build: push while the heap holds
+    fewer than n_preselect entries, else replace the root when fe is
+    strictly larger.
+
+    Returns {t_sum: heap list of (fe, ctr, i1, i2, i3)}, identical to that
+    scalar loop's, values and list order included.  (The order matters: the
+    caller iterates each heap in list order, which decides which string is
+    reported among composites that tie exactly in |v|.)
+
+    How, without the 10⁶–10⁷ scalar products: each level's heap evolves on
+    its own in counter order, and once it holds n_preselect entries its root
+    only grows, so every later entry with fe ≤ r0 (the root when it became
+    full) is rejected without touching the heap; more generally an entry
+    with fe ≤ the current root is.  Fidelities are first computed in
+    vectorized blocks (one per i1), which can differ from the scalar
+    products in the last bit; they are used only to skip entries with
+    fe < root − 1e-12 (refreshed every 64 candidates), which the scalar
+    loop rejects too.  Every entry that is compared against the heap is
+    re-scored with the loop's own scalar expression, so all comparisons are
+    the loop's.
+
+    Memory: blocks are processed in counter order and fed to the per-level
+    heaps straight away, so only one block (n2 × n3 entries, a few MB) is
+    held at a time, not every combination.
+    """
+    (t1s, U1s), (t2s, U2s), (t3s, U3s) = [
+        (np.array([t for t, _ in ch], dtype=np.int64),
+         np.array([U for _, U in ch], dtype=complex).reshape(-1, 2, 2))
+        for ch in m_np]
+    if min(len(t1s), len(t2s), len(t3s)) == 0:
+        return {}
+    A3 = U3s @ H_np                                    # U3·H, as in the loop
+
+    margin = 1e-12                                     # ≫ vectorized-vs-scalar rounding
+    pool = {}
+    ctr0 = 0                                           # counter of the block's first entry
+    for i1 in range(len(t1s)):
+        t1 = int(t1s[i1])
+        n2 = int(np.searchsorted(t2s, t_total - t1, side="right"))
+        if n2 == 0:
+            continue
+        HU1 = H_np @ U1s[i1]
+        U21 = U2s[:n2] @ HU1                           # (n2, 2, 2)
+        n3 = np.searchsorted(t3s, t_total - t1 - t2s[:n2], side="right")
+        m3 = int(n3.max())
+        if m3 == 0:
+            continue
+        Uc = A3[None, :m3] @ U21[:, None]              # (n2, m3, 2, 2)
+        M = tH @ Uc
+        fe_blk = np.abs(M[..., 0, 0] + M[..., 1, 1]) ** 2 / 4
+        j2, j3 = np.nonzero(np.arange(m3)[None, :] < n3[:, None])  # row-major = loop order
+        fe = fe_blk[j2, j3]
+        tsum = t1 + t2s[j2] + t3s[j3]
+        base, ctr0 = ctr0, ctr0 + len(j2)
+        HU1_loop = H_np @ m_np[0][i1][1]
+
+        def scalar_entry(k):
+            """The loop's own fe (same arrays, same products) for entry k."""
+            i2, i3 = int(j2[k]), int(j3[k])
+            U_comp = m_np[2][i3][1] @ H_np @ (m_np[1][i2][1] @ HU1_loop)
+            return (abs(np.trace(tH @ U_comp)) ** 2 / 4, base + k, i1, i2, i3)
+
+        # Per level, this block's entries in counter order: fill the heap,
+        # then stream the rest, skipping what the current root rejects (the
+        # root only grows, so the filter is refreshed in batches).
+        order = np.argsort(tsum, kind="stable")
+        bounds = np.flatnonzero(np.diff(tsum[order])) + 1
+        for grp in np.split(order, bounds):
+            h = pool.setdefault(int(tsum[grp[0]]), [])
+            n_fill = min(len(grp), max(0, n_preselect - len(h)))
+            for k in grp[:n_fill].tolist():
+                heapq.heappush(h, scalar_entry(k))
+            rest = grp[n_fill:]
+            rest_fe = fe[rest]
+            pos = 0
+            while pos < len(rest):
+                hits = np.flatnonzero(rest_fe[pos:] >= h[0][0] - margin)
+                if len(hits) == 0:
+                    break
+                batch = hits[:64] + pos
+                for k in rest[batch].tolist():
+                    entry = scalar_entry(k)
+                    if entry[0] > h[0][0]:
+                        heapq.heapreplace(h, entry)
+                pos = int(batch[-1]) + 1
+    return pool
+
+
 def optimize_u3_hardcap(theta, phi, lam, t_total,
                          n_keep=5, n_keep_total=10, dps=60,
                          enclosed_tol_ratio=0.1, fw_iter=2000,
@@ -401,29 +497,7 @@ def optimize_u3_hardcap(theta, phi, lam, t_total,
     # moderate process fidelity), which would otherwise be evicted by higher-
     # fidelity balanced composites when n_keep_total is large.
     n_preselect = 3 * n_keep_total
-    pool = {}
-    ctr = 0
-    for i1, (t1, U1_np) in enumerate(m_np[0]):
-        HU1 = H_np @ U1_np
-        for i2, (t2, U2_np) in enumerate(m_np[1]):
-            if t1 + t2 > t_total:
-                break
-            U21 = U2_np @ HU1
-            for i3, (t3, U3_np) in enumerate(m_np[2]):
-                t_sum = t1 + t2 + t3
-                if t_sum > t_total:
-                    break
-                U_comp = U3_np @ H_np @ U21
-                fe = abs(np.trace(tH @ U_comp)) ** 2 / 4
-                entry = (fe, ctr, i1, i2, i3)
-                ctr += 1
-                if t_sum not in pool:
-                    pool[t_sum] = []
-                h = pool[t_sum]
-                if len(h) < n_preselect:
-                    heapq.heappush(h, entry)
-                elif fe > h[0][0]:
-                    heapq.heapreplace(h, entry)
+    pool = _preselect_pool(m_np, H_np, tH, t_total, n_preselect)
 
     if not pool:
         return None
